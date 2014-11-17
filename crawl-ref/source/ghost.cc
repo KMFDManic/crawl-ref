@@ -1093,7 +1093,7 @@ static bool _lich_spell_is_good(const monster_spells &spells, spell_type spell,
     unsigned int disciplines = get_spell_disciplines(spell);
     int num_disciplines = count_bits(disciplines);
 
-    for (int exponent = 0; exponent < SPTYP_LAST_EXPONENT; ++exponent)
+    for (int exponent = 0; exponent <= SPTYP_LAST_EXPONENT; ++exponent)
         if (disciplines & (1 << exponent))
             if (x_chance_in_y(weights[exponent], total_weight * num_disciplines))
                 return true;
@@ -1104,7 +1104,7 @@ static bool _lich_spell_is_good(const monster_spells &spells, spell_type spell,
 static void _calculate_lich_spell_weights(const monster_spells &spells,
                                           int *weights, int &total_weight)
 {
-    for (int exponent = 0; exponent < SPTYP_LAST_EXPONENT; ++exponent)
+    for (int exponent = 0; exponent <= SPTYP_LAST_EXPONENT; ++exponent)
         // there are no primary hexes, and hexes are interesting to have on
         // liches, so give them a slightly higher chance
         weights[exponent] = (1 << exponent) == SPTYP_HEXES
@@ -1112,7 +1112,7 @@ static void _calculate_lich_spell_weights(const monster_spells &spells,
             : 1;
 
     for (auto slot : spells)
-        for (int exponent = 0; exponent < SPTYP_LAST_EXPONENT; ++exponent)
+        for (int exponent = 0; exponent <= SPTYP_LAST_EXPONENT; ++exponent)
         {
             unsigned int discipline = 1 << exponent;
             if (spell_typematch(slot.spell, discipline))
@@ -1129,7 +1129,7 @@ static void _calculate_lich_spell_weights(const monster_spells &spells,
         }
 
     total_weight = 0;
-    for (int i = 0; i < SPTYP_LAST_EXPONENT; ++i)
+    for (int i = 0; i <= SPTYP_LAST_EXPONENT; ++i)
         total_weight += weights[i];
 
 }
@@ -1137,7 +1137,7 @@ static void _calculate_lich_spell_weights(const monster_spells &spells,
 static void _add_lich_spell(monster_spells &spells, const mon_spell_slot *set,
                             size_t set_len)
 {
-    int weights[SPTYP_LAST_EXPONENT];
+    int weights[SPTYP_LAST_EXPONENT + 1];
     int total_weight;
     _calculate_lich_spell_weights(spells, weights, total_weight);
 
