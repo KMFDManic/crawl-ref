@@ -584,7 +584,7 @@ static bool _slime_merge(monster* thing)
 
     int max_slime_merge = 5;
     int compass_idx[8] = {0, 1, 2, 3, 4, 5, 6, 7};
-    shuffle_array(compass_idx, 8);
+    shuffle_array(compass_idx);
     coord_def origin = thing->pos();
 
     int target_distance = grid_distance(thing->target, thing->pos());
@@ -617,6 +617,7 @@ static bool _slime_merge(monster* thing)
             && other_thing->type == MONS_SLIME_CREATURE
             && other_thing->attitude == thing->attitude
             && other_thing->has_ench(ENCH_CHARM) == thing->has_ench(ENCH_CHARM)
+            && other_thing->has_ench(ENCH_HEXED) == thing->has_ench(ENCH_HEXED)
             && other_thing->is_summoned() == thing->is_summoned()
             && !other_thing->is_shapeshifter()
             && !_disabled_merge(other_thing))
@@ -663,7 +664,7 @@ static bool _crawling_corpse_merge(monster *crawlie)
         return false;
 
     int compass_idx[8] = {0, 1, 2, 3, 4, 5, 6, 7};
-    shuffle_array(compass_idx, 8);
+    shuffle_array(compass_idx);
     coord_def origin = crawlie->pos();
 
     monster* merge_target = NULL;
@@ -724,7 +725,7 @@ static monster *_slime_split(monster* thing, bool force_split)
     }
 
     int compass_idx[] = {0, 1, 2, 3, 4, 5, 6, 7};
-    shuffle_array(compass_idx, 8);
+    shuffle_array(compass_idx);
 
     // Anywhere we can place an offspring?
     for (int i = 0; i < 8; ++i)
@@ -801,7 +802,7 @@ static bool _starcursed_split(monster* mon)
     const coord_def origin = mon->pos();
 
     int compass_idx[] = {0, 1, 2, 3, 4, 5, 6, 7};
-    shuffle_array(compass_idx, 8);
+    shuffle_array(compass_idx);
 
     // Anywhere we can place an offspring?
     for (int i = 0; i < 8; ++i)

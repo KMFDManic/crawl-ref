@@ -112,15 +112,15 @@ monster_type fill_out_corpse(const monster* mons,
                 corpse_class = draco_or_demonspawn_subspecies(mons);
         }
 
-        if (mons->props.exists(ORIGINAL_TYPE_KEY))
+        if (mons->has_ench(ENCH_GLOWING_SHAPESHIFTER))
+            mtype = corpse_class = MONS_GLOWING_SHAPESHIFTER;
+        else if (mons->has_ench(ENCH_SHAPESHIFTER))
+            mtype = corpse_class = MONS_SHAPESHIFTER;
+        else if (mons->props.exists(ORIGINAL_TYPE_KEY))
         {
             mtype = (monster_type) mons->props[ORIGINAL_TYPE_KEY].get_int();
             corpse_class = mons_species(mtype);
         }
-        else if (mons->has_ench(ENCH_GLOWING_SHAPESHIFTER))
-            mtype = corpse_class = MONS_GLOWING_SHAPESHIFTER;
-        else if (mons->has_ench(ENCH_SHAPESHIFTER))
-            mtype = corpse_class = MONS_SHAPESHIFTER;
     }
 
     // Doesn't leave a corpse.
@@ -145,8 +145,6 @@ monster_type fill_out_corpse(const monster* mons,
             corpse.props[MONSTER_NUMBER] = short(mons->props["old_heads"].get_int());
         // XXX: Appears to be a safe conversion?
         corpse.props[MONSTER_MID]      = int(mons->mid);
-        if (mons->props.exists(NEVER_HIDE_KEY))
-            corpse.props[NEVER_HIDE_KEY] = true;
     }
 
     monster_info minfo(corpse_class);
@@ -2798,22 +2796,24 @@ int monster_die(monster* mons, killer_type killer,
     if (!silent && !wizard && !mons_reset && corpse != -1
         && !fake_abjuration
         && !timeout
-        && !unsummoned)
+        && !unsummoned
+        && !(mons->flags & MF_KNOWN_SHIFTER))
+
     {
-        //XXX: these messages don't work if the monster is gendered!
-        if (!(mons->flags & MF_KNOWN_SHIFTER)
-            && mons->is_shapeshifter())
+        if (mons->is_shapeshifter())
         {
-            simple_monster_message(mons, "'s shape twists and changes as "
-                                  "it dies.");
+            const string message = "'s shape twists and changes as " +
+                                   mons->pronoun(PRONOUN_SUBJECTIVE) + " dies.";
+            simple_monster_message(mons, message.c_str());
         }
         else if (mons->props.exists(ORIGINAL_TYPE_KEY))
         {
             // Avoid "Sigmund returns to its original shape as it dies.".
             unwind_var<monster_type> mt(mons->type,
                                         (monster_type) mons->props[ORIGINAL_TYPE_KEY].get_int());
-            int num = mons->type == MONS_HYDRA ? mons->props["old_heads"].get_int()
-                                               : mons->number;
+            int num = mons->mons_species() == MONS_HYDRA
+                                        ? mons->props["old_heads"].get_int()
+                                        : mons->number;
             unwind_var<unsigned int> number(mons->number, num);
             const string message = " returns to " +
                                    mons->pronoun(PRONOUN_POSSESSIVE) +

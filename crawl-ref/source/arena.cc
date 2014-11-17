@@ -20,6 +20,7 @@
 #include "macro.h"
 #include "maps.h"
 #include "message.h"
+#include "misc.h"
 #include "mgen_data.h"
 #include "mon-death.h"
 #include "mon-pick.h"
@@ -133,16 +134,10 @@ namespace arena
     static void adjust_spells(monster* mons, bool no_summons, bool no_animate)
     {
         monster_spells &spells(mons->spells);
-        for (auto it = spells.begin(); it != spells.end(); it++)
-        {
-            spell_type sp = it->spell;
-            if (no_summons && spell_typematch(sp, SPTYP_SUMMONING)
-                || no_animate && sp == SPELL_ANIMATE_DEAD)
-            {
-                spells.erase(it);
-                it = spells.begin() - 1;
-            }
-        }
+        erase_if(spells, [&](const mon_spell_slot &t) {
+            return (no_summons && spell_typematch(t.spell, SPTYP_SUMMONING))
+                || (no_animate && t.spell == SPELL_ANIMATE_DEAD);
+        });
     }
 
     static void adjust_monsters()
@@ -365,10 +360,9 @@ namespace arena
             }
         }
 
-        const string glyphs = strip_tag_prefix(spec, "ban_glyphs:");
-        for (unsigned int i = 0; i < glyphs.size(); i++)
-            if (!(glyphs[i] & !127))
-                banned_glyphs[static_cast<int>(glyphs[i])] = true;
+        for (unsigned char gly : strip_tag_prefix(spec, "ban_glyphs:"))
+            if (gly < ARRAYSZ(banned_glyphs))
+                banned_glyphs[gly] = true;
 
         vector<string> factions = split_string(" v ", spec);
 

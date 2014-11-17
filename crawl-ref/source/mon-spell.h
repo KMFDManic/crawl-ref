@@ -226,8 +226,9 @@ static const mon_spellbook mspell_list[] =
       {
        { SPELL_BOLT_OF_FIRE, 10, MON_SPELL_WIZARD },
        { SPELL_AGONY, 10, MON_SPELL_WIZARD },
-       { SPELL_INVISIBILITY, 10, MON_SPELL_WIZARD },
-       { SPELL_ANIMATE_DEAD, 10, MON_SPELL_WIZARD },
+       { SPELL_INNER_FLAME, 10, MON_SPELL_WIZARD },
+       { SPELL_INVISIBILITY, 10, MON_SPELL_WIZARD | MON_SPELL_EMERGENCY },
+       { SPELL_ANIMATE_DEAD, 20, MON_SPELL_WIZARD },
       }
     },
 
@@ -2056,7 +2057,7 @@ static const mon_spellbook mspell_list[] =
                                 | MON_SPELL_NO_SILENT | MON_SPELL_BREATH },
        { SPELL_BOLT_OF_DRAINING, 50, MON_SPELL_NATURAL | MON_SPELL_BREATH },
        { SPELL_DISPEL_UNDEAD, 38, MON_SPELL_PRIEST },
-       { SPELL_CONFUSE, 19, MON_SPELL_PRIEST }, // Control Undead?
+       { SPELL_CONTROL_UNDEAD, 19, MON_SPELL_PRIEST },
       }
     },
 

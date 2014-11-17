@@ -57,7 +57,7 @@ MiscastEffect::MiscastEffect(actor* _target, actor* _act_source,
                              bool _can_plural) :
     target(_target), act_source(_act_source),
     special_source(_source), cause(_cause), spell(_spell),
-    school(SPTYP_NONE), pow(_pow), fail(_fail), level(-1), kc(KC_NCATEGORIES),
+    school(SPTYP_NONE), pow(_pow), fail(_fail), level(-1),
     kt(KILL_NONE), nothing_happens_when(_nothing_happens),
     lethality_margin(_lethality_margin), hand_str(_hand_str),
     can_plural_hand(_can_plural)
@@ -80,7 +80,7 @@ MiscastEffect::MiscastEffect(actor* _target, actor* _act_source, int _source,
     target(_target), act_source(_act_source),
     special_source(_source), cause(_cause),
     spell(SPELL_NO_SPELL), school(_school), pow(-1), fail(-1), level(_level),
-    kc(KC_NCATEGORIES), kt(KILL_NONE), nothing_happens_when(_nothing_happens),
+    kt(KILL_NONE), nothing_happens_when(_nothing_happens),
     lethality_margin(_lethality_margin), hand_str(_hand_str),
     can_plural_hand(_can_plural)
 {
@@ -102,7 +102,7 @@ MiscastEffect::MiscastEffect(actor* _target, actor* _act_source, int _source,
     target(_target), act_source(_act_source),
     special_source(_source), cause(_cause),
     spell(SPELL_NO_SPELL), school(_school), pow(_pow), fail(_fail), level(-1),
-    kc(KC_NCATEGORIES), kt(KILL_NONE), nothing_happens_when(_nothing_happens),
+    kt(KILL_NONE), nothing_happens_when(_nothing_happens),
     lethality_margin(_lethality_margin), hand_str(_hand_str),
     can_plural_hand(_can_plural)
 {
@@ -142,7 +142,6 @@ void MiscastEffect::init()
 
     if (act_source && act_source->is_player())
     {
-        kc           = KC_YOU;
         kt           = KILL_YOU_MISSILE;
         source_known = true;
     }
@@ -156,11 +155,6 @@ void MiscastEffect::init()
         else
             kt = KILL_MON_MISSILE;
 
-        if (act_source->as_monster()->friendly())
-            kc = KC_FRIENDLY;
-        else
-            kc = KC_OTHER;
-
         source_known = you.can_see(act_source);
 
         if (target_known && special_source == MUMMY_MISCAST)
@@ -170,9 +164,6 @@ void MiscastEffect::init()
     {
         ASSERT(special_source != MELEE_MISCAST);
 
-        act_source = target;
-
-        kc = KC_OTHER;
         kt = KILL_MISCAST;
 
         if (special_source == ZOT_TRAP_MISCAST)
@@ -189,7 +180,6 @@ void MiscastEffect::init()
             source_known = true;
     }
 
-    ASSERT(kc != KC_NCATEGORIES);
     ASSERT(kt != KILL_NONE);
 
     // source_known = false for MELEE_MISCAST so that melee miscasts
@@ -1342,12 +1332,8 @@ void MiscastEffect::_translocation(int severity)
         case 5:
         {
             bool success = false;
-
-            for (int i = 1 + random2(3); i >= 0; --i)
-            {
-                if (_create_monster(MONS_SPATIAL_VORTEX, 3))
-                    success = true;
-            }
+            for (int i = 1 + random2(3); i > 0; --i)
+                success |= _create_monster(MONS_SPATIAL_VORTEX, 3);
 
             if (success)
                 all_msg = "Space twists in upon itself!";
@@ -1507,12 +1493,8 @@ void MiscastEffect::_summoning(int severity)
         case 0:
         {
             bool success = false;
-
-            for (int i = 1 + random2(3); i >= 0; --i)
-            {
-                if (_create_monster(MONS_SPATIAL_VORTEX, 3))
-                    success = true;
-            }
+            for (int i = 1 + random2(3); i > 0; --i)
+                success |= _create_monster(MONS_SPATIAL_VORTEX, 3);
 
             if (success)
                 all_msg = "Space twists in upon itself!";
@@ -1532,12 +1514,8 @@ void MiscastEffect::_summoning(int severity)
         case 5:
         {
             bool success = false;
-
-            for (int i = 2 + random2(3); i >= 0; --i)
-            {
-                if (_create_monster(MONS_ABOMINATION_SMALL, 5, true))
-                    success = true;
-            }
+            for (int i = 2 + random2(2); i > 0; --i)
+                success |= _create_monster(MONS_ABOMINATION_SMALL, 5, true);
 
             if (success && neither_end_silenced())
             {
@@ -1562,12 +1540,8 @@ void MiscastEffect::_summoning(int severity)
             case 0:
             {
                 bool success = false;
-
-                for (int i = 1 + random2(3); i >= 0; --i)
-                {
-                    if (_create_monster(MONS_WORLDBINDER, 5, true))
-                        success = true;
-                }
+                for (int i = 1 + random2(3); i > 0; --i)
+                    success |= _create_monster(MONS_WORLDBINDER, 5, true);
 
                 if (success)
                     all_msg = "Desperate hands claw out from thin air!";
@@ -1585,12 +1559,8 @@ void MiscastEffect::_summoning(int severity)
             case 2:
             {
                 bool success = false;
-
-                for (int i = 1 + random2(2); i >= 0; --i)
-                {
-                    if (_create_monster(summon_any_demon(RANDOM_DEMON_COMMON), 3, true))
-                        success = true;
-                }
+                for (int i = 1 + random2(2); i > 0; --i)
+                    success |= _create_monster(summon_any_demon(RANDOM_DEMON_COMMON), 3, true);
 
                 if (success)
                 {
@@ -1762,7 +1732,7 @@ void MiscastEffect::_divination_mon(int severity)
             mon_msg_seen = "@The_monster@ looks disoriented.";
             target->confuse(
                 act_source,
-                1 + random2(3 + act_source->get_hit_dice()));
+                1 + random2(3 + (act_source ? act_source->get_hit_dice() : 13)));
             break;
         }
         break;
@@ -1771,7 +1741,7 @@ void MiscastEffect::_divination_mon(int severity)
         mon_msg_seen = "@The_monster@ shudders.";
         target->confuse(
             act_source,
-            5 + random2(3 + act_source->get_hit_dice()));
+            5 + random2(3 + (act_source ? act_source->get_hit_dice() : 13)));
         break;
 
     case 3:         // nasty
@@ -1780,7 +1750,7 @@ void MiscastEffect::_divination_mon(int severity)
             target->as_monster()->forget_random_spell();
         target->confuse(
             act_source,
-            8 + random2(3 + act_source->get_hit_dice()));
+            8 + random2(3 + (act_source ? act_source->get_hit_dice() : 13)));
         break;
     }
     do_msg();
@@ -1924,12 +1894,8 @@ void MiscastEffect::_necromancy(int severity)
         case 0:
         {
             bool success = false;
-
-            for (int i = random2(2); i >= 0; --i)
-            {
-                if (_create_monster(MONS_SHADOW, 2, true))
-                    success = true;
-            }
+            for (int i = 0; i < 2; ++i)
+                success |= _create_monster(MONS_SHADOW, 2, true);
 
             if (success)
             {
@@ -2117,16 +2083,12 @@ void MiscastEffect::_transmutation(int severity)
             break;
         case 5:
         {
+            // Should be actual monsters and not durable summons,
+            // but there's a bunch of problems there (corpses,
+            // piety, perma-allies-on-hostiles-somehow, etc)
             bool success = false;
-
-            for (int i = 2 + random2(2); i >= 0; --i)
-            {
-                // Should be actual monsters and not durable summons,
-                // but there's a bunch of problems there (corpses,
-                // piety, perma-allies-on-hostiles-somehow, etc)
-                if (_create_monster(MONS_GIANT_MITE, 0, true))
-                    success = true;
-            }
+            for (int i = 2 + random2(3); i > 0; --i)
+                success |= _create_monster(MONS_GIANT_MITE, 0, true);
 
             if (success)
             {
@@ -2310,11 +2272,9 @@ void MiscastEffect::_fire(int severity)
         case 0:
         {
             bool success = false;
-            for (int i = 1 + random2(2); i >= 0; --i)
-            {
-                if (_create_monster(MONS_FIRE_VORTEX, 2, true))
-                    success = true;
-            }
+            for (int i = 1 + random2(2); i > 0; --i)
+                success |= _create_monster(MONS_FIRE_VORTEX, 2, true);
+
             if (success)
             {
                 you_msg        = "Fire whirls out from your @hands@!";
@@ -3183,11 +3143,9 @@ void MiscastEffect::_zot()
             break;
         case 3:
         case 4:
-            for (int i = 1 + random2(2); i >= 0; --i)
-            {
-                if (_create_monster(summon_any_demon(RANDOM_DEMON_COMMON), 0, true))
-                    success = true;
-            }
+            for (int i = 1 + random2(2); i > 0; --i)
+                success |= _create_monster(summon_any_demon(RANDOM_DEMON_COMMON), 0, true);
+
             if (success)
             {
                 you_msg = "Something turns its malign attention towards "
@@ -3197,11 +3155,9 @@ void MiscastEffect::_zot()
             }
             break;
         case 5:
-            for (int i = 1 + random2(3); i >= 0; --i)
-            {
-                if (_create_monster(MONS_ABOMINATION_SMALL, 5, true))
-                    success = true;
-            }
+            for (int i = 2 + random2(2); i > 0; --i)
+                success |= _create_monster(MONS_ABOMINATION_SMALL, 5, true);
+
             if (success && neither_end_silenced())
             {
                 you_msg        = "A chorus of moans calls out to you!";
@@ -3213,11 +3169,9 @@ void MiscastEffect::_zot()
             break;
         case 6:
         case 7:
-            for (int i = 2 + random2(3); i >= 0; --i)
-            {
-                if (_create_monster(RANDOM_MOBILE_MONSTER, 4, true))
-                    success = true;
-            }
+            for (int i = 2 + random2(4); i > 0; --i)
+                success |= _create_monster(RANDOM_MOBILE_MONSTER, 4, true);
+
             if (success)
             {
                 all_msg = "Wisps of shadow whirl around...";
