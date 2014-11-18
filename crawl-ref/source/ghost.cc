@@ -185,6 +185,7 @@ static brand_type _random_special_pan_lord_brand()
 void ghost_demon::init_pandemonium_lord()
 {
     mon_spell_slot slot;
+    slot.freq = 12;
     slot.flags = MON_SPELL_DEMONIC;
 
     do name = make_name(random_int(), false);
@@ -725,6 +726,7 @@ void ghost_demon::add_spells(bool actual_ghost)
 {
     spells.clear();
     mon_spell_slot slot;
+    slot.freq = 12;
     slot.flags = MON_SPELL_WIZARD;
 
     for (int i = 0; i < you.spell_no; i++)
