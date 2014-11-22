@@ -56,6 +56,7 @@ static plen_t htole(plen_t x)
 #define dprintf(...) do {} while (0)
 #endif
 
+#undef PACKAGE_VERSION // PCRE defines this.
 #define PACKAGE_VERSION 1
 #define PACKAGE_MAGIC   0x53534344 /* "DCSS" */
 
