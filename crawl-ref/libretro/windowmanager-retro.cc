@@ -346,6 +346,8 @@ bool RetroWrapper::load_texture(GenericTexture *tex, const char *filename,
     png_read_info(png_ptr, info_ptr);    
     orig_width = png_get_image_width(png_ptr, info_ptr);
     orig_height = png_get_image_height(png_ptr, info_ptr);
+    png_set_expand(png_ptr);
+    png_set_filler(png_ptr, 0xFF, PNG_FILLER_AFTER);
     png_read_update_info(png_ptr, info_ptr);
 
     /* read file */
