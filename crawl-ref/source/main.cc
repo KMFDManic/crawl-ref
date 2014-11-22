@@ -296,7 +296,9 @@ int ss_main(int argc, char* argv[])
 
     // Load in the system environment variables
     get_system_environment();
+#ifndef __LIBRETRO__
     init_signals();
+#endif
 
     // Parse command line args -- look only for initfile & crawl_dir entries.
     if (!parse_args(argc, argv, true))
