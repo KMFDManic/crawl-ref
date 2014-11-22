@@ -142,8 +142,8 @@ void DungeonRegion::pack_buffers()
         && on_screen(m_cursor[CURSOR_TUTORIAL]))
     {
         m_buf_dngn.add_main_tile(TILEI_TUTORIAL_CURSOR,
-                                 m_cursor[CURSOR_TUTORIAL].x,
-                                 m_cursor[CURSOR_TUTORIAL].y);
+                                 m_cursor[CURSOR_TUTORIAL].x - m_cx_to_gx,
+                                 m_cursor[CURSOR_TUTORIAL].y - m_cy_to_gy);
     }
 
     for (const tile_overlay &overlay : m_overlays)
