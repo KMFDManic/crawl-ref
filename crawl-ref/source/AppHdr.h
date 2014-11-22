@@ -106,9 +106,7 @@ static inline double pow(int x, double y) { return std::pow((double)x, y); }
     //
     // #define DGAMELAUNCH
 
-#ifndef __LIBRETRO__
     #define USE_UNIX_SIGNALS
-#endif
 
     #define FILE_SEPARATOR '/'
 #ifndef USE_TILE_LOCAL

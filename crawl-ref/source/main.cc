@@ -283,7 +283,9 @@ int ss_main(int argc, char* argv[])
     real_crawl_state = new game_state();
     real_env = new crawl_environment();
 #endif
+#ifndef __LIBRETRO__ // Signals belong to the frontend.
     init_crash_handler();
+#endif
 
     _compile_time_asserts();  // Actually, not just compile time.
 
