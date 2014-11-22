@@ -292,6 +292,7 @@ struct ImageBuf
     {
         for (unsigned int i = 0; i != height; i ++)
             rows[i] = pixels + (i * width);
+        memset(pixels, sizeof(unsigned int)*width*height, 0);
     }
     
     ~ImageBuf()
