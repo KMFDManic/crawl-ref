@@ -23,28 +23,34 @@ COMMONFLAGS :=
 ifneq (,$(findstring unix,$(platform)))
    TARGET := $(TARGET_NAME)_libretro.so
 	fpic := -fPIC
-   COMMONFLAGS += -msse -msse2 
+   COMMONFLAGS += -msse -msse2 -DUNIX
 	LDFLAGS += -lpthread
    LDFLAGS += -shared -Wl,--version-script=libretro/link.T -Wl,--no-undefined
 else ifneq (,$(findstring osx,$(platform)))
    TARGET := $(TARGET_NAME)_libretro.dylib
 	fpic := -fPIC
-   COMMONFLAGS += -DDARWIN_NO_CARBON 
+   COMMONFLAGS += -DDARWIN_NO_CARBON -DUNIX
    CXXFLAGS += -stdlib=libc++
-   LDFLAGS += -dynamiclib -stdlib=libc++ -framework OpenGL
+   LDFLAGS += -dynamiclib -stdlib=libc++
+ifeq($(HAVE_OPENGL), 1)
+   LDFLAGS += -framework OpenGL
+endif
 else ifneq (,$(findstring ios,$(platform)))
    TARGET := $(TARGET_NAME)_libretro_ios.dylib
 	fpic := -fPIC
-	COMMONFLAGS += -marm -DHAVE_POSIX_MEMALIGN -DGLES
+	COMMONFLAGS += -marm -DHAVE_POSIX_MEMALIGN -DGLES -DUNIX
    CPPFLAGS += -stdlib=libc++ 
-   LDFLAGS += -dynamiclib -marm -stdlib=libc++ -framework OpenGLES
+   LDFLAGS += -dynamiclib -marm -stdlib=libc++
    CC = clang -arch armv7 -isysroot $(IOSSDK) -miphoneos-version-min=5.0
    CXX = clang++ -arch armv7 -isysroot $(IOSSDK) -miphoneos-version-min=5.0   
+ifeq($(HAVE_OPENGL), 1)
+   LDFLAGS += -framework OpenGLES
+endif
 else ifneq (,$(findstring win,$(platform)))
    CC = gcc
    CXX = g++
    TARGET := $(TARGET_NAME)_libretro.dll
-   COMMONFLAGS += -msse -msse2   
+   COMMONFLAGS += -msse -msse2  -DTARGET_OS_WINDOWS
    LDFLAGS += -shared -static-libgcc -static-libstdc++ -Wl,--version-script=libretro/link.T -lwinmm -lgdi32
 endif
 
@@ -57,7 +63,7 @@ include Makefile.common
 
 OBJECTS     += $(SOURCES_C:.c=.o) $(SOURCES_CXX:.cc=.o)
 
-COMMONFLAGS += -DFT2_BUILD_LIBRARY -DHAVE_FDATASYNC -D__LIBRETRO__ -DSQLITE_OMIT_LOAD_EXTENSION -DUSE_TILE -DUSE_TILE_LOCAL -DWIZARD -DUSE_FT $(fpic) -DPROPORTIONAL_FONT=\"DejaVuSans.ttf\" -DMONOSPACED_FONT=\"DejaVuSansMono.ttf\" -DUNIX
+COMMONFLAGS += -DFT2_BUILD_LIBRARY -DHAVE_FDATASYNC -D__LIBRETRO__ -DSQLITE_OMIT_LOAD_EXTENSION -DUSE_TILE -DUSE_TILE_LOCAL -DWIZARD -DUSE_FT $(fpic) -DPROPORTIONAL_FONT=\"DejaVuSans.ttf\" -DMONOSPACED_FONT=\"DejaVuSansMono.ttf\" 
 
 ifeq ($(HAVE_OPENGL), 1)
 COMMONFLAGS += -DUSE_RETROGL
