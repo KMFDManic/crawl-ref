@@ -32,7 +32,7 @@ else ifneq (,$(findstring osx,$(platform)))
    COMMONFLAGS += -DDARWIN_NO_CARBON -DUNIX
    CXXFLAGS += -stdlib=libc++
    LDFLAGS += -dynamiclib -stdlib=libc++
-ifeq($(HAVE_OPENGL), 1)
+ifeq ($(HAVE_OPENGL), 1)
    LDFLAGS += -framework OpenGL
 endif
 else ifneq (,$(findstring ios,$(platform)))
@@ -43,7 +43,7 @@ else ifneq (,$(findstring ios,$(platform)))
    LDFLAGS += -dynamiclib -marm -stdlib=libc++
    CC = clang -arch armv7 -isysroot $(IOSSDK) -miphoneos-version-min=5.0
    CXX = clang++ -arch armv7 -isysroot $(IOSSDK) -miphoneos-version-min=5.0   
-ifeq($(HAVE_OPENGL), 1)
+ifeq ($(HAVE_OPENGL), 1)
    LDFLAGS += -framework OpenGLES
 endif
 else ifneq (,$(findstring win,$(platform)))
