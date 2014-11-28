@@ -5574,8 +5574,10 @@ void player::init()
 
 #ifdef WIZARD
     wizard = Options.wiz_mode == WIZ_YES;
+    explore = Options.explore_mode == WIZ_YES;
 #else
     wizard = false;
+    explore = false;
 #endif
     birth_time       = time(0);
 

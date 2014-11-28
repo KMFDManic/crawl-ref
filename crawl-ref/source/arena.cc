@@ -156,8 +156,14 @@ namespace arena
             return;
 
         vector<int> items;
+#ifdef __cplusplus98
+        for (short it : mon->inv)
+            if (it != NON_ITEM)
+                items.push_back(it);
+#else
         copy_if(begin(mon->inv), end(mon->inv), begin(items),
                 [] (short it) { return it != NON_ITEM; });
+#endif
 
         if (items.empty())
             return;

@@ -1135,15 +1135,14 @@ spret_type cast_dispersal(int pow, bool fail)
     return SPRET_SUCCESS;
 }
 
-int singularity_max_range(int pow)
+int singularity_range(int pow, int strength)
 {
     // XXX: unify some of this functionality.
     // A singularity is HD (pow / 10) + 1; its strength is
-    // (HD / (4 + range)) for a given range, and the singularity needs
-    // to have a strength of at least 1 to do something at a given
-    // range; thus, range <= hit_dice - 4 = (pow / 10) - 3.
+    // (HD / (range^2)) for a given range, so for a given strength the
+    // range is sqrt(pow/10 + 1) / strength.
 
-    return max(0, min(LOS_RADIUS, (pow / 10) - 3));
+    return max(0, min(LOS_RADIUS, (int)isqrt((pow/10 + 1) / strength)));
 }
 
 spret_type cast_singularity(actor* agent, int pow, const coord_def& where,
@@ -1221,24 +1220,23 @@ spret_type cast_singularity(actor* agent, int pow, const coord_def& where,
 static void _move_creature_to_singularity(const monster* singularity,
                                           actor* victim, int strength)
 {
-    coord_def dir(coord_def(0,0));
+    ray_def ray;
+    if (!find_ray(singularity->pos(), victim->pos(), ray, opc_solid))
+    {
+        // This probably shouldn't ever happen, but just in case:
+        if (you.can_see(victim))
+        {
+            mprf("%s violently %s moving!",
+                 victim->name(DESC_THE).c_str(),
+                 victim->conj_verb("stop").c_str());
+        }
+        victim->hurt(singularity, COLLISION_DAMAGE, BEAM_MMISSILE,
+                     KILLED_BY_BEAM, "", GRAVITY);
+        return;
+    }
+
     for (int i = 0; i < strength; i++)
     {
-        ray_def ray;
-        if (!find_ray(singularity->pos(), victim->pos(), ray, opc_solid))
-        {
-            // This probably shouldn't ever happen, but just in case:
-            if (you.can_see(victim))
-            {
-                mprf("%s violently %s moving!",
-                     victim->name(DESC_THE).c_str(),
-                     victim->conj_verb("stop").c_str());
-            }
-            victim->hurt(singularity, COLLISION_DAMAGE, BEAM_MMISSILE,
-                         KILLED_BY_BEAM, "", GRAVITY);
-            break;
-        }
-
         ray.advance();
         const coord_def newpos = ray.pos();
 
@@ -1246,6 +1244,7 @@ static void _move_creature_to_singularity(const monster* singularity,
         {
             victim->collide(newpos, singularity,
                             10 * singularity->get_hit_dice());
+            break;
         }
         else if (actor* act_at_space = actor_at(newpos))
         {
@@ -1276,7 +1275,7 @@ void singularity_pull(const monster *singularity)
 
         const int range = isqrt((singularity->pos() - ai->pos()).abs());
         const int strength =
-            max(0, min(5, (singularity->get_hit_dice()) / (4 + range)));
+            max(0, min(4, (singularity->get_hit_dice()) / (range*range)));
         static const char *messages[] =
         {
             "%s pulls at %s.",

@@ -1284,6 +1284,7 @@ static void tag_construct_char(writer &th)
     marshallString2(th, you.jiyva_second_name);
 
     marshallByte(th, you.wizard);
+    marshallByte(th, you.explore);
 
     marshallByte(th, crawl_state.type);
     if (crawl_state.game_is_tutorial())
@@ -2047,6 +2048,10 @@ void tag_read_char(reader &th, uint8_t format, uint8_t major, uint8_t minor)
     you.jiyva_second_name = unmarshallString2(th);
 
     you.wizard            = unmarshallBoolean(th);
+#if TAG_MAJOR_VERSION == 34
+    if (minor >= TAG_MINOR_EXPLORE_MODE)
+#endif
+        you.explore       = unmarshallBoolean(th);
 
     crawl_state.type = (game_type) unmarshallUByte(th);
     if (crawl_state.game_is_tutorial())
@@ -5391,6 +5396,17 @@ void unmarshallMonster(reader &th, monster& m)
         m.ghost_demon_init();
         parts |= MP_GHOST_DEMON;
     }
+
+    if (th.getMinorVersion() < TAG_MINOR_RANDLICHES
+        && mons_is_ghost_demon(m.type)
+        && (m.type == MONS_LICH || m.type == MONS_ANCIENT_LICH))
+    {
+        ghost_demon ghost;
+        ghost.init_lich(m.type);
+        ghost.spells = m.spells; // ???
+        m.set_ghost(ghost);
+        parts |= MP_GHOST_DEMON;
+    }
 #endif
 
     if (m.props.exists("monster_tile_name"))
@@ -5801,6 +5817,11 @@ static void unmarshallSpells(reader &th, monster_spells &spells
         spells[j].freq = unmarshallByte(th);
         spells[j].flags = unmarshallShort(th);
 #if TAG_MAJOR_VERSION == 34
+        }
+        else
+        {
+            // initialize freq to something so fixup_spells works properly
+            spells[j].freq = 12;
         }
 #endif
     }
