@@ -313,7 +313,6 @@ bool mcache_monster::get_weapon_offset(tileidx_t mon_tile,
     case TILEP_MONS_WIGLAF:
     case TILEP_MONS_RAKSHASA:
     case TILEP_MONS_VAMPIRE_KNIGHT:
-    case TILEP_MONS_SERAPH:
     case TILEP_MONS_CHERUB:
     case TILEP_MONS_MENNAS:
     case TILEP_MONS_PROFANE_SERVITOR:
@@ -507,6 +506,7 @@ bool mcache_monster::get_weapon_offset(tileidx_t mon_tile,
     case TILEP_MONS_MASTER_ELEMENTALIST:
     case TILEP_MONS_JESSICA:
     case TILEP_MONS_ANGEL:
+    case TILEP_MONS_DAEVA:
     case TILEP_MONS_MERFOLK_WATER:
     case TILEP_MONS_MERFOLK_JAVELINEER_WATER:
     case TILEP_MONS_MERFOLK_AQUAMANCER_WATER:
@@ -575,6 +575,10 @@ bool mcache_monster::get_weapon_offset(tileidx_t mon_tile,
     case TILEP_MONS_SAINT_ROKA:
         *ofs_x = -3;
         *ofs_y = 1;
+        break;
+    case TILEP_MONS_SERAPH:
+        *ofs_x = -1;
+        *ofs_y = -10;
         break;
     // Shift downwards and to the right.
     case TILEP_MONS_OGRE:
@@ -1051,6 +1055,8 @@ bool mcache_monster::get_shield_offset(tileidx_t mon_tile,
         break;
 
     case TILEP_MONS_PANDEMONIUM_LORD:
+    case TILEP_MONS_ANGEL:
+    case TILEP_MONS_DAEVA:
         *ofs_x = 1;
         *ofs_y = 1;
         break;
@@ -1152,6 +1158,11 @@ bool mcache_monster::get_shield_offset(tileidx_t mon_tile,
     case TILEP_MONS_JORMUNGANDR:
         *ofs_x = -2;
         *ofs_y = 2;
+        break;
+
+    case TILEP_MONS_SERAPH:
+        *ofs_x = -2;
+        *ofs_y = -7;
         break;
 
     case TILEP_MONS_SPRIGGAN_RIDER: // shield covered, out of picture

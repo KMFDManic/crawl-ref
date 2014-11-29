@@ -428,7 +428,10 @@ void zappy(zap_type z_type, int power, bolt &pbolt)
 
     ASSERT(zinfo->is_enchantment == pbolt.is_enchantment());
 
-    pbolt.ench_power = power; // XXX: is this used for to hit anywhere?
+    if (zinfo->is_enchantment && zinfo->tohit)
+        pbolt.ench_power = (*zinfo->tohit)(power);
+    else
+        pbolt.ench_power = power;
 
     if (zinfo->is_enchantment)
         pbolt.hit = AUTOMATIC_HIT;
@@ -5164,6 +5167,11 @@ bool ench_flavour_affects_monster(beam_type flavour, const monster* mon,
 
     case BEAM_INNER_FLAME:
         rc = !(mon->is_summoned() || mon->has_ench(ENCH_INNER_FLAME));
+        break;
+
+    case BEAM_CORONA:
+        rc = !mon->glows_naturally()
+             && !mons_class_flag(mon->type, M_SHADOW);
         break;
 
     default:
