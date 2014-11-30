@@ -346,7 +346,7 @@ spret_type cast_passwall(const coord_def& delta, int pow, bool fail)
 static int _intoxicate_monsters(coord_def where, int pow, int, actor *)
 {
     monster* mons = monster_at(where);
-    if (mons == NULL
+    if (mons == nullptr
         || mons_intel(mons) < I_NORMAL
         || mons->holiness() != MH_NATURAL
         || mons->res_poison() > 0)
@@ -370,7 +370,7 @@ spret_type cast_intoxicate(int pow, bool fail)
     fail_check();
     mpr("You radiate an intoxicating aura.");
     if (x_chance_in_y(60 - pow/3, 100))
-        potion_effect(POT_CONFUSION, 10 + (100 - pow) / 10);
+        confuse_player(3+random2(10 + (100 - pow) / 10));
 
     if (one_chance_in(20)
         && lose_stat(STAT_INT, 1 + random2(3), false,

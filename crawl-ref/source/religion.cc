@@ -3383,10 +3383,10 @@ void join_religion(god_type which_god, bool immediate)
         you.piety_hysteresis = 0;
         you.gift_timeout = 0;
         _make_empty_vec(you.props["available_sacrifices"], SV_INT);
-        _make_empty_vec(you.props["current_health_sacrifice"], SV_INT);
-        _make_empty_vec(you.props["current_essence_sacrifice"], SV_INT);
-        _make_empty_vec(you.props["current_purity_sacrifice"], SV_INT);
-        _make_empty_vec(you.props["current_arcane_sacrifices"], SV_INT);
+        _make_empty_vec(you.props[HEALTH_SAC_KEY], SV_INT);
+        _make_empty_vec(you.props[ESSENCE_SAC_KEY], SV_INT);
+        _make_empty_vec(you.props[PURITY_SAC_KEY], SV_INT);
+        _make_empty_vec(you.props[ARCANA_SAC_KEY], SV_INT);
         you.props["ru_progress_to_next_sacrifice"] = 0;
         // offer the first sacrifice faster than normal;
         int delay = 50;
@@ -3753,7 +3753,7 @@ void god_pitch(god_type which_god)
 
     cgotoxy(1, 18, GOTO_CRT);
     textcolour(channel_to_colour(MSGCH_PROMPT));
-    if (!yesno(info, false, 'n', true, true, false, NULL, GOTO_CRT))
+    if (!yesno(info, false, 'n', true, true, false, nullptr, GOTO_CRT))
     {
         you.turn_is_over = false; // Okay, opt out.
         redraw_screen();

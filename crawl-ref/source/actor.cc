@@ -13,6 +13,7 @@
 #include "itemprop.h"
 #include "los.h"
 #include "misc.h"
+#include "mon-behv.h"
 #include "mon-death.h"
 #include "religion.h"
 #include "stepdown.h"
@@ -72,13 +73,13 @@ hands_reqd_type actor::hands_reqd(const item_def &item) const
 
 /**
  * Wrapper around the virtual actor::can_wield(const item_def&,bool,bool,bool,bool) const overload.
- * @param item May be NULL, in which case a dummy item will be passed in.
+ * @param item May be nullptr, in which case a dummy item will be passed in.
  */
 bool actor::can_wield(const item_def* item, bool ignore_curse,
                       bool ignore_brand, bool ignore_shield,
                       bool ignore_transform) const
 {
-    if (item == NULL)
+    if (item == nullptr)
     {
         // Unarmed combat.
         item_def fake;
@@ -112,7 +113,7 @@ bool actor::handle_trap()
     trap_def* trap = find_trap(pos());
     if (trap)
         trap->trigger(*this);
-    return trap != NULL;
+    return trap != nullptr;
 }
 
 int actor::skill_rdiv(skill_type sk, int mult, int div) const
@@ -846,10 +847,15 @@ void actor::collide(coord_def newpos, const actor *agent, int pow)
     actor *other = actor_at(newpos);
     ASSERT(this != other);
 
+    if (is_monster())
+        behaviour_event(as_monster(), ME_WHACK, agent);
+
     dice_def damage(2, 1 + pow / 10);
 
     if (other)
     {
+        if (other->is_monster())
+            behaviour_event(other->as_monster(), ME_WHACK, agent);
         if (you.can_see(this) || you.can_see(other))
         {
             mprf("%s %s with %s!",
@@ -862,8 +868,11 @@ void actor::collide(coord_def newpos, const actor *agent, int pow)
         other->hurt(agent, other->apply_ac(damage.roll()),
                     BEAM_MISSILE, KILLED_BY_COLLISION,
                     "", thisname);
-        hurt(agent, apply_ac(damage.roll()), BEAM_MISSILE,
-             KILLED_BY_COLLISION, "", othername);
+        if (alive())
+        {
+            hurt(agent, apply_ac(damage.roll()), BEAM_MISSILE,
+                 KILLED_BY_COLLISION, "", othername);
+        }
         return;
     }
 
@@ -873,8 +882,10 @@ void actor::collide(coord_def newpos, const actor *agent, int pow)
         {
             mprf("%s %s into %s!",
                  name(DESC_THE).c_str(), conj_verb("slam").c_str(),
-                 feature_description_at(newpos, false, DESC_THE, false)
-                     .c_str());
+                 env.map_knowledge(newpos).known()
+                 ? feature_description_at(newpos, false, DESC_THE, false)
+                       .c_str()
+                 : "something");
         }
         else
         {

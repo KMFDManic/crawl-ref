@@ -384,19 +384,12 @@ bool maybe_id_book(item_def &book, bool silent)
 
 void read_book(item_def &book)
 {
-    if (!maybe_id_book(book))
-        return;
-
-#ifdef USE_TILE_WEB
-    tiles_crt_control show_as_menu(CRT_MENU, "read_book");
-#endif
-
-    spellset spells = item_spellset(book);
-    ASSERT(spells.size() == 1); // one book per book
-    spells[0].label = book.name(DESC_THE);
-
-    formatted_string fdesc;
-    list_spellset(spells, &book, fdesc);
+    if (maybe_id_book(book))
+    {
+        clrscr();
+        describe_item(book);
+        redraw_screen();
+    }
 }
 
 /**
@@ -409,52 +402,6 @@ void read_book(item_def &book)
 bool you_can_memorise(spell_type spell)
 {
     return !spell_is_useless(spell, false, true);
-}
-
-
-// a map of schools to the corresponding sacrifice 'mutations'.
-static const mutation_type arcana_sacrifice_map[] = {
-    MUT_NO_CONJURATION_MAGIC,
-    MUT_NO_HEXES_MAGIC,
-    MUT_NO_CHARM_MAGIC,
-    MUT_NO_FIRE_MAGIC,
-    MUT_NO_ICE_MAGIC,
-    MUT_NO_TRANSMUTATION_MAGIC,
-    MUT_NO_NECROMANCY_MAGIC,
-    MUT_NO_SUMMONING_MAGIC,
-    NUM_MUTATIONS, // SPTYP_DIVINATION
-    MUT_NO_TRANSLOCATION_MAGIC,
-    MUT_NO_POISON_MAGIC,
-    MUT_NO_EARTH_MAGIC,
-    MUT_NO_AIR_MAGIC
-};
-
-/**
- * Are some subset of the given schools unusable by the player?
- * (Due to Sacrifice Arcana)
- *
- * @param schools   A bitfield containing a union of spschool_flag_types.
- * @return          Whether the player is unable use any of the given schools.
- */
-bool cannot_use_schools(unsigned int schools)
-{
-    COMPILE_CHECK(ARRAYSZ(arcana_sacrifice_map) == SPTYP_LAST_EXPONENT + 1);
-
-    // iter over every school
-    for (int i = 0; i <= SPTYP_LAST_EXPONENT; i++)
-    {
-        // skip schools not in the provided set
-        const int school = 1<<i;
-        if (!(schools & school))
-            continue;
-
-        // check if the player has this school locked out
-        const mutation_type lockout_mut = arcana_sacrifice_map[i];
-        if (lockout_mut != NUM_MUTATIONS && player_mutation_level(lockout_mut))
-            return true;
-    }
-
-    return false;
 }
 
 bool player_can_memorise(const item_def &book)
@@ -818,7 +765,7 @@ static spell_type _choose_mem_spell(spell_list &spells,
             MEL_TITLE), false);
 #endif
 
-    spell_menu.set_highlighter(NULL);
+    spell_menu.set_highlighter(nullptr);
     spell_menu.set_tag("spell");
 
     spell_menu.action_cycle = Menu::CYCLE_TOGGLE;
@@ -1145,20 +1092,20 @@ static bool _compare_spells(spell_type a, spell_type b)
 
     if (schools_a != schools_b && schools_a != 0 && schools_b != 0)
     {
-        const char* a_type = NULL;
-        const char* b_type = NULL;
+        const char* a_type = nullptr;
+        const char* b_type = nullptr;
 
         // Find lowest/earliest school for each spell.
         for (int i = 0; i <= SPTYP_LAST_EXPONENT; i++)
         {
             int mask = 1 << i;
-            if (a_type == NULL && (schools_a & mask))
+            if (a_type == nullptr && (schools_a & mask))
                 a_type = spelltype_long_name(mask);
-            if (b_type == NULL && (schools_b & mask))
+            if (b_type == nullptr && (schools_b & mask))
                 b_type = spelltype_long_name(mask);
         }
-        ASSERT(a_type != NULL);
-        ASSERT(b_type != NULL);
+        ASSERT(a_type != nullptr);
+        ASSERT(b_type != nullptr);
         return strcmp(a_type, b_type) < 0;
     }
 

@@ -204,6 +204,7 @@ NORETURN static void _launch_game();
 static void _do_berserk_no_combat_penalty();
 static void _do_searing_ray();
 static void _input();
+static void _safe_move_player(int move_x, int move_y);
 static void _move_player(int move_x, int move_y);
 static void _move_player(coord_def move);
 static int  _check_adjacent(dungeon_feature_type feat, coord_def& delta);
@@ -1196,6 +1197,15 @@ static bool _cmd_is_repeatable(command_type cmd, bool is_again = false)
 
     case CMD_REST:
     case CMD_WAIT:
+    case CMD_SAFE_WAIT:
+    case CMD_SAFE_MOVE_LEFT:
+    case CMD_SAFE_MOVE_DOWN:
+    case CMD_SAFE_MOVE_UP:
+    case CMD_SAFE_MOVE_RIGHT:
+    case CMD_SAFE_MOVE_UP_LEFT:
+    case CMD_SAFE_MOVE_DOWN_LEFT:
+    case CMD_SAFE_MOVE_UP_RIGHT:
+    case CMD_SAFE_MOVE_DOWN_RIGHT:
         return i_feel_safe(true);
 
     case CMD_MOVE_LEFT:
@@ -1945,6 +1955,15 @@ void process_command(command_type cmd)
     case CMD_MOVE_DOWN_RIGHT: _move_player(1,  1); break;
     case CMD_MOVE_RIGHT:      _move_player(1,  0); break;
 
+    case CMD_SAFE_MOVE_DOWN_LEFT:  _safe_move_player(-1,  1); break;
+    case CMD_SAFE_MOVE_DOWN:       _safe_move_player(0,  1); break;
+    case CMD_SAFE_MOVE_UP_RIGHT:   _safe_move_player(1, -1); break;
+    case CMD_SAFE_MOVE_UP:         _safe_move_player(0, -1); break;
+    case CMD_SAFE_MOVE_UP_LEFT:    _safe_move_player(-1, -1); break;
+    case CMD_SAFE_MOVE_LEFT:       _safe_move_player(-1,  0); break;
+    case CMD_SAFE_MOVE_DOWN_RIGHT: _safe_move_player(1,  1); break;
+    case CMD_SAFE_MOVE_RIGHT:      _safe_move_player(1,  0); break;
+
     case CMD_RUN_DOWN_LEFT: _start_running(RDIR_DOWN_LEFT, RMODE_START); break;
     case CMD_RUN_DOWN:      _start_running(RDIR_DOWN, RMODE_START);      break;
     case CMD_RUN_UP_RIGHT:  _start_running(RDIR_UP_RIGHT, RMODE_START);  break;
@@ -2021,6 +2040,10 @@ void process_command(command_type cmd)
     case CMD_SHOW_TERRAIN: toggle_show_terrain(); break;
     case CMD_ADJUST_INVENTORY: adjust(); break;
 
+    case CMD_SAFE_WAIT:
+        if (!i_feel_safe(true))
+            break;
+        // else fall-through
     case CMD_WAIT:
         you.turn_is_over = true;
         extract_manticore_spikes("You carefully extract the manticore spikes "
@@ -2939,6 +2962,13 @@ static void _do_searing_ray()
         end_searing_ray();
 }
 
+static void _safe_move_player(int move_x, int move_y)
+{
+    if (!i_feel_safe(true))
+        return;
+    _move_player(move_x, move_y);
+}
+
 // Called when the player moves by walking/running. Also calls attack
 // function etc when necessary.
 static void _move_player(int move_x, int move_y)
@@ -3157,7 +3187,7 @@ static void _move_player(coord_def move)
                  mons_genus(targ_monst->type) == MONS_FUNGUS ? "fungus"
                                                              : "plants");
         }
-        targ_monst = NULL;
+        targ_monst = nullptr;
     }
 
     bool targ_pass = you.can_pass_through(targ) && !you.is_stationary();
@@ -3196,12 +3226,12 @@ static void _move_player(coord_def move)
 
     // You cannot move away from a siren but you CAN fight monsters on
     // neighbouring squares.
-    monster* beholder = NULL;
+    monster* beholder = nullptr;
     if (!you.confused())
         beholder = you.get_beholder(targ);
 
     // You cannot move closer to a fear monger.
-    monster *fmonger = NULL;
+    monster *fmonger = nullptr;
     if (!you.confused())
         fmonger = you.get_fearmonger(targ);
 
@@ -3412,7 +3442,8 @@ static void _move_player(coord_def move)
         _open_door(move);
         you.prev_move = move;
     }
-    else if (!targ_pass && grd(targ) == DNGN_MALIGN_GATEWAY && !attacking)
+    else if (!targ_pass && grd(targ) == DNGN_MALIGN_GATEWAY
+             && !attacking && !you.is_stationary())
     {
         if (!crawl_state.disables[DIS_CONFIRMATIONS]
             && !_prompt_dangerous_portal(grd(targ)))
@@ -3484,7 +3515,7 @@ static int _get_num_and_char_keyfun(int &ch)
 
 static int _get_num_and_char(const char* prompt, char* buf, int buf_len)
 {
-    if (prompt != NULL)
+    if (prompt != nullptr)
         mprf(MSGCH_PROMPT, "%s", prompt);
 
     line_reader reader(buf, buf_len);

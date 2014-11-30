@@ -1000,7 +1000,7 @@ void ghost_demon::init_spellforged_servitor(actor* caster)
 {
     mon_spell_slot slot;
     slot.flags = MON_SPELL_WIZARD;
-    monster* mon = caster->is_monster() ? caster->as_monster() : NULL;
+    monster* mon = caster->is_monster() ? caster->as_monster() : nullptr;
 
     int pow = mon ? 12 * mon->spell_hd(SPELL_SPELLFORGED_SERVITOR)
                   : calc_spell_power(SPELL_SPELLFORGED_SERVITOR, true);
@@ -1035,9 +1035,7 @@ const mon_spell_slot lich_primary_spells[] =
 {
     { SPELL_IOOD, 18, MON_SPELL_WIZARD },
     { SPELL_LEHUDIBS_CRYSTAL_SPEAR, 18, MON_SPELL_WIZARD },
-    { SPELL_CHAIN_LIGHTNING, 18, MON_SPELL_WIZARD },
     { SPELL_CORROSIVE_BOLT, 18, MON_SPELL_WIZARD },
-    { SPELL_SUMMON_GREATER_DEMON, 18, MON_SPELL_WIZARD },
     { SPELL_SUMMON_GREATER_DEMON, 18, MON_SPELL_WIZARD },
 };
 
