@@ -1044,6 +1044,7 @@ bool miasma_player(actor *who, string source_aux = "");
 bool napalm_player(int amount, string source, string source_aux = "");
 void dec_napalm_player(int delay);
 
+bool spell_slow_player(int pow);
 bool slow_player(int turns);
 void dec_slow_player(int delay);
 void dec_exhaust_player(int delay);
@@ -1051,6 +1052,7 @@ void dec_exhaust_player(int delay);
 bool haste_player(int turns, bool rageext = false);
 void dec_haste_player(int delay);
 void dec_elixir_player(int delay);
+void dec_ambrosia_player(int delay);
 bool flight_allowed(bool quiet = false);
 void fly_player(int pow, bool already_flying = false);
 void float_player();

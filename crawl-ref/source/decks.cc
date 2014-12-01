@@ -1881,8 +1881,13 @@ static void _damaging_card(card_type card, int power, deck_rarity_type rarity,
             zapping(ztype, power/6, beam);
             if (venom_vuln)
             {
-                mpr("Releasing that poison leaves you vulnerable to poison.");
-                you.increase_duration(DUR_POISON_VULN, 10 - power_level * 5 + random2(6), 50);
+                if (you.res_poison(false) >= 3)
+                    mpr("Releasing that poison makes you feel less healthy for a moment.");
+                else
+                {
+                    mpr("Releasing that poison leaves you vulnerable to poison.");
+                    you.increase_duration(DUR_POISON_VULN, 10 - power_level * 5 + random2(6), 50);
+                }
             }
     }
     else if (ztype == ZAP_IOOD && power_level == 2)
@@ -2046,13 +2051,13 @@ static void _potion_card(int power, deck_rarity_type rarity)
         pot = (coinflip() ? POT_HEAL_WOUNDS : POT_MAGIC);
 
     if (you_worship(GOD_CHEIBRIADOS) && (pot == POT_HASTE
-        || pot == POT_BERSERK_RAGE))
+                                         || pot == POT_BERSERK_RAGE))
     {
         simple_god_message(" protects you from inadvertent hurry.");
         return;
     }
 
-    potion_effect(pot, random2(power/4));
+    potionlike_effect(pot, random2(power/4));
 
     for (radius_iterator ri(you.pos(), LOS_NO_TRANS); ri; ++ri)
     {

@@ -693,7 +693,7 @@ const char* potion_type_name(int potiontype)
     case POT_POISON:            return "poison";
     case POT_SLOWING:           return "slowing";
     case POT_CANCELLATION:      return "cancellation";
-    case POT_CONFUSION:         return "confusion";
+    case POT_AMBROSIA:          return "ambrosia";
     case POT_INVISIBILITY:      return "invisibility";
     case POT_DEGENERATION:      return "degeneration";
     case POT_DECAY:             return "decay";
@@ -3104,10 +3104,10 @@ bool is_bad_item(const item_def &item, bool temp)
 
         switch (item.sub_type)
         {
+#if TAG_MAJOR_VERSION == 34
         case POT_SLOWING:
-            if (you.species == SP_FORMICID)
-                return false;
-        case POT_CONFUSION:
+            return !you.stasis();
+#endif
         case POT_DEGENERATION:
             return true;
         case POT_DECAY:
@@ -3160,6 +3160,10 @@ bool is_dangerous_item(const item_def &item, bool temp)
     if (!item_type_known(item))
         return false;
 
+    // useless items can hardly be dangerous.
+    if (is_useless_item(item, temp))
+        return false;
+
     switch (item.base_type)
     {
     case OBJ_SCROLLS:
@@ -3182,13 +3186,9 @@ bool is_dangerous_item(const item_def &item, bool temp)
         switch (item.sub_type)
         {
         case POT_MUTATION:
-            // Non-vampire undead can't be mutated.
-            return you.can_safely_mutate(temp);
         case POT_LIGNIFY:
-            // Only living characters can change form.
-            return you.undead_state() == US_ALIVE
-                   || temp && you.species == SP_VAMPIRE
-                      && you.hunger_state >= HS_SATIATED;
+        case POT_AMBROSIA:
+            return true;
         default:
             return false;
         }
@@ -3431,12 +3431,16 @@ bool is_useless_item(const item_def &item, bool temp)
         case POT_POISON:
             // If you're poison resistant, poison is only useless.
             return player_res_poison(false, temp) > 0;
+#if TAG_MAJOR_VERSION == 34
         case POT_SLOWING:
             return you.species == SP_FORMICID;
+#endif
         case POT_HEAL_WOUNDS:
             return !you.can_device_heal();
         case POT_INVISIBILITY:
             return _invisibility_is_useless(temp);
+        case POT_AMBROSIA:
+            return you.clarity() || you.duration[DUR_DIVINE_STAMINA];
         }
 
         return false;

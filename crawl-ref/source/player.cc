@@ -4815,7 +4815,7 @@ bool curare_hits_player(int death_source, int levels, string name,
         }
     }
 
-    potion_effect(POT_SLOWING, levels + random2(3*levels));
+    slow_player(10 + random2(levels + random2(3 * levels)));
 
     return hurted > 0;
 }
@@ -5113,7 +5113,7 @@ bool miasma_player(actor *who, string source_aux)
 
     if (one_chance_in(3))
     {
-        potion_effect(POT_SLOWING, 5);
+        slow_player(10 + random2(5));
         success = true;
     }
 
@@ -5366,6 +5366,30 @@ void dec_elixir_player(int delay)
         _dec_elixir_hp(delay);
     if (you.duration[DUR_ELIXIR_MAGIC])
         _dec_elixir_mp(delay);
+}
+
+void dec_ambrosia_player(int delay)
+{
+    if (!you.duration[DUR_AMBROSIA])
+        return;
+
+    // ambrosia ends when confusion does.
+    if (!you.confused())
+        you.duration[DUR_AMBROSIA] = 0;
+
+    you.duration[DUR_AMBROSIA] = max(0, you.duration[DUR_AMBROSIA] - delay);
+
+    // 3-5 per turn, 9-50 over (3-10) turns
+    const int restoration = 3 + random2(3);
+    if (!you.duration[DUR_DEATHS_DOOR])
+    {
+        const int mut_factor = 3 - you.mutation[MUT_NO_DEVICE_HEAL];
+        inc_hp(div_rand_round(restoration * mut_factor, 3));
+    }
+    inc_mp(restoration);
+
+    if (!you.duration[DUR_AMBROSIA])
+        mpr("You feel less invigorated.");
 }
 
 bool flight_allowed(bool quiet)

@@ -1529,6 +1529,7 @@ unsigned int item_value(item_def item, bool ident)
             case POT_MAGIC:
             case POT_INVISIBILITY:
             case POT_CANCELLATION:
+            case POT_AMBROSIA:
                 valued += 80;
                 break;
 
@@ -1559,11 +1560,10 @@ unsigned int item_value(item_def item, bool ident)
 #if TAG_MAJOR_VERSION == 34
             case POT_STRONG_POISON:
             case POT_PORRIDGE:
+            case POT_SLOWING:
 #endif
             case POT_BLOOD:
-            case POT_CONFUSION:
             case POT_POISON:
-            case POT_SLOWING:
                 valued += 10;
                 break;
 
@@ -1822,8 +1822,10 @@ unsigned int item_value(item_def item, bool ident)
         break;
 
     case OBJ_BOOKS:
+    {
         valued = 150;
-        if (item.sub_type == BOOK_DESTRUCTION)
+        const book_type book = static_cast<book_type>(item.sub_type);
+        if (book == BOOK_DESTRUCTION)
             break;
 
         if (item_type_known(item))
@@ -1833,45 +1835,37 @@ unsigned int item_value(item_def item, bool ident)
             {
                 // Consider spellbook as rare as the average of its
                 // three rarest spells.
-                int rarities[SPELLBOOK_SIZE];
-                int count_valid = 0;
-                for (int i = 0; i < SPELLBOOK_SIZE; i++)
+                int rarities[3] = {0};
+                int count = 0;
+                for (spell_type spell : spells_in_book(item))
                 {
-                    spell_type spell = which_spell_in_book(item, i);
-                    if (spell == SPELL_NO_SPELL)
-                    {
-                        rarities[i] = 0;
-                        continue;
-                    }
-
-                    rarities[i] = spell_rarity(spell);
-                    count_valid++;
+                    int min_index = 0;
+                    for (int i = 0; i < 3; i++)
+                        if (rarities[i] < spell_rarity(spell))
+                            min_index = i;
+                    rarities[min_index] = spell_rarity(spell);
+                    count++;
                 }
-                ASSERT(count_valid > 0);
+                ASSERT(count > 0);
 
-                if (count_valid > 3)
-                    count_valid = 3;
+                if (count > 3)
+                    count = 3;
 
-                sort(rarities, rarities + SPELLBOOK_SIZE);
-                for (int i = SPELLBOOK_SIZE - 1;
-                     i >= SPELLBOOK_SIZE - count_valid; i--)
-                {
-                    rarity += rarities[i];
-                }
-
-                rarity /= count_valid;
+                rarity = rarities[0] + rarities[1] + rarities[2];
+                rarity /= count;
 
                 // Fixed level randarts get a bonus for the really low and
                 // really high level spells.
-                if (item.sub_type == BOOK_RANDART_LEVEL)
+                if (book == BOOK_RANDART_LEVEL)
                     valued += 50 * abs(5 - item.plus);
             }
             else
-                rarity = book_rarity(item.sub_type);
+                rarity = book_rarity(book);
 
             valued += (int)(rarity * 50.0);
         }
         break;
+    }
 
     case OBJ_STAVES:
         valued = item_type_known(item) ? 250 : 120;
@@ -1915,12 +1909,11 @@ bool is_worthless_consumable(const item_def &item)
         case POT_BLOOD:
 #if TAG_MAJOR_VERSION == 34
         case POT_BLOOD_COAGULATED:
+        case POT_SLOWING:
 #endif
-        case POT_CONFUSION:
         case POT_DECAY:
         case POT_DEGENERATION:
         case POT_POISON:
-        case POT_SLOWING:
             return true;
         default:
             return false;

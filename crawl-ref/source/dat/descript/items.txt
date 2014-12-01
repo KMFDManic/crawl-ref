@@ -839,6 +839,12 @@ potion of agility
 A magic potion which greatly increases the dexterity and evasiveness of one who
 drinks it.
 %%%%
+potion of ambrosia
+
+A strange substance, produced by ghost moths. Consuming it causes regeneration
+of health and magic, along with total befuddlement. The two effects are
+fundamentally linked - the regeneration ends the moment the confusion does.
+%%%%
 potion of beneficial mutation
 
 A potion which gives you a supposedly good mutation.
@@ -866,11 +872,6 @@ potion of coagulated blood
 A potion containing the essence of life. Vampires find it... vital. The blood
 within won't be palatable for much longer.
 # endif
-%%%%
-potion of confusion
-
-A potion which confuses your perceptions and reduces your control over your own
-actions.
 %%%%
 potion of cure mutation
 
@@ -1199,6 +1200,9 @@ scroll of brand weapon
 This scroll enchants an unbranded weapon so as to make it far more effective
 at inflicting harm on its wielder's enemies. The scroll can also be used on a
 weapon that is already permanently branded to randomly select a new brand.
+
+Unlike temporary branding spells, this scroll causes no ill effects if the
+reader uses it to change the brand of a weapon of distortion.
 %%%%
 scroll of curse armour
 
