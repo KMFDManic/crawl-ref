@@ -1221,7 +1221,7 @@ static void _move_creature_to_singularity(const monster* singularity,
                                           actor* victim, int strength)
 {
     ray_def ray;
-    if (!find_ray(singularity->pos(), victim->pos(), ray, opc_solid))
+    if (!find_ray(victim->pos(), singularity->pos(), ray, opc_solid))
     {
         // This probably shouldn't ever happen, but just in case:
         if (you.can_see(victim))
@@ -1300,10 +1300,8 @@ void singularity_pull(const monster *singularity)
                  singularity->name(DESC_THE).c_str(),
                  ai->name(DESC_THE).c_str());
         }
-        ai->hurt(singularity,
-                 roll_dice(strength,
-                           div_rand_round(singularity->get_hit_dice(), 4)),
-                 BEAM_MMISSILE, KILLED_BY_BEAM, "", GRAVITY);
+        ai->hurt(singularity, roll_dice(strength, 6), BEAM_MMISSILE,
+                 KILLED_BY_BEAM, "", GRAVITY);
 
         if (ai->alive() && !ai->is_stationary())
             _move_creature_to_singularity(singularity, *ai, strength);
