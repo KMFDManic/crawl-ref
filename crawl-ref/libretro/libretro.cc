@@ -89,7 +89,7 @@ struct touch_detail
     operator void*() { return pressed ? this : 0; }
 };
 
-void process_touches()
+void process_touches(void)
 {
     static bool down;
     static unsigned int touch_stamp;
@@ -145,10 +145,23 @@ void process_touches()
     }
 }
 
+void process_pad(void)
+{
+    if (!retrowm)
+       return;
+
+#if 0
+    if (input_cb(0, RETRO_DEVICE_JOYPAD, 0, RETRO_DEVICE_ID_JOYPAD_LEFT))
+       retrowm->push_key(true, (enum retro_key)RETROK_LEFT, (enum retro_mod)0, 0);
+#endif
+}
+
 static void keyboard_event(bool down, unsigned keycode, uint32_t character, uint16_t key_modifiers)
 {
-    if (retrowm)
-        retrowm->push_key(down, (enum retro_key)keycode, (enum retro_mod)key_modifiers, character);
+    if (!retrowm)
+       return;
+
+    retrowm->push_key(down, (enum retro_key)keycode, (enum retro_mod)key_modifiers, character);
 }
 
 // Game Wrapper
@@ -310,6 +323,7 @@ void retro_run (void)
 
     poll_cb();
     process_touches();
+    process_pad();
     
 #ifdef USE_FB    
     co_switch(game_thread);
