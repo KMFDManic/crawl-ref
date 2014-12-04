@@ -295,7 +295,7 @@ item_def* stack_iterator::operator->() const
     return &mitm[cur_link];
 }
 
-int stack_iterator::link() const
+int stack_iterator::index() const
 {
     return cur_link;
 }
@@ -1645,6 +1645,7 @@ void note_inscribe_item(item_def &item)
 
 static bool _put_item_in_inv(item_def& it, int quant_got, bool quiet, bool& put_in_inv)
 {
+    put_in_inv = false;
     if (item_is_stationary(it))
     {
         if (!quiet)
@@ -1683,6 +1684,7 @@ static bool _put_item_in_inv(item_def& it, int quant_got, bool quiet, bool& put_
         }
         else
             _check_note_item(it);
+        return true;
     }
 
     return false;

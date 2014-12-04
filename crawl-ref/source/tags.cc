@@ -1263,7 +1263,7 @@ void tag_read(reader &inf, tag_type tag_id)
                 for (stack_iterator si(coord_def(0, i+5)); si; ++si)
                 {
                     env.shop[i].stock.push_back(*si);
-                    dec_mitm_item_quantity(si.link(), si->quantity);
+                    dec_mitm_item_quantity(si.index(), si->quantity);
                 }
             }
 #endif
@@ -3732,6 +3732,12 @@ void unmarshallItem(reader &th, item_def &item)
     item.pos.y       = unmarshallShort(th);
     item.flags       = unmarshallInt(th);
     item.link        = unmarshallShort(th);
+#if TAG_MAJOR_VERSION == 34
+    // ITEM_IN_SHOP was briefly NON_ITEM + NON_ITEM (1e85cf0), but that
+    // doesn't fit in a short.
+    if (item.link == static_cast<signed short>(54000))
+        item.link = ITEM_IN_SHOP;
+#endif
 
     unmarshallShort(th);  // igrd[item.x][item.y] -- unused
 
