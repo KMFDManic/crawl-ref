@@ -99,6 +99,9 @@ exports.TRAVEL_PATH_TO_4 = val++;
 exports.TRAVEL_PATH_TO_5 = val++;
 exports.TRAVEL_PATH_TO_6 = val++;
 exports.TRAVEL_PATH_TO_7 = val++;
+exports.GOLD_SPARKLES = val++;
+exports.GOLD_SPARKLES_1 = val++;
+exports.GOLD_SPARKLES_2 = val++;
 exports.ICONS_MAX = exports.TILEI_ICONS_MAX = val++;
 
 var tile_info = [
@@ -197,6 +200,9 @@ var tile_info = [
   {w: 32, h: 32, ox: 0, oy: 18, sx: 973, sy: 16, ex: 989, ey: 28},
   {w: 32, h: 32, ox: 0, oy: 12, sx: 989, sy: 0, ex: 1005, ey: 8},
   {w: 32, h: 32, ox: 2, oy: 0, sx: 989, sy: 8, ex: 1001, ey: 24},
+  {w: 32, h: 32, ox: 0, oy: 0, sx: 0, sy: 32, ex: 32, ey: 64},
+  {w: 32, h: 32, ox: 2, oy: 1, sx: 32, sy: 32, ex: 61, ey: 61},
+  {w: 32, h: 32, ox: 3, oy: 1, sx: 61, sy: 32, ex: 89, ey: 62},
 ];
 
 exports.get_tile_info = function (idx)
@@ -299,6 +305,9 @@ var _tile_count =
     1,
     1,
     1,
+    1,
+    1,
+    3,
     1,
     1,
 ];
@@ -405,6 +414,9 @@ var _basetiles =
     87,
     87,
     87,
+    95,
+    95,
+    95,
 ];
 
 exports.basetile = function (idx)

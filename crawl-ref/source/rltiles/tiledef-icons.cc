@@ -100,6 +100,9 @@ static unsigned int _tile_icons_count[TILEI_ICONS_MAX - 0] =
     1,
     1,
     1,
+    3,
+    1,
+    1,
 };
 
 unsigned int tile_icons_count(tileidx_t idx)
@@ -205,6 +208,9 @@ static tileidx_t _tile_icons_basetiles[TILEI_ICONS_MAX - 0] =
     87,
     87,
     87,
+    95,
+    95,
+    95,
 };
 
 tileidx_t tile_icons_basetile(tileidx_t idx)
@@ -310,6 +316,9 @@ static int _tile_icons_probs[TILEI_ICONS_MAX - 0] =
     6,
     7,
     8,
+    1,
+    2,
+    3,
 };
 
 int tile_icons_probs(tileidx_t idx)
@@ -415,6 +424,9 @@ static const char *_tile_icons_name[TILEI_ICONS_MAX - 0] =
     "TRAVEL_PATH_TO_5",
     "TRAVEL_PATH_TO_6",
     "TRAVEL_PATH_TO_7",
+    "GOLD_SPARKLES",
+    "GOLD_SPARKLES_1",
+    "GOLD_SPARKLES_2",
 };
 
 const char *tile_icons_name(tileidx_t idx)
@@ -520,6 +532,9 @@ static tile_info _tile_icons_info[TILEI_ICONS_MAX - 0] =
     tile_info(32, 32, 0, 18, 973, 16, 989, 28),
     tile_info(32, 32, 0, 12, 989, 0, 1005, 8),
     tile_info(32, 32, 2, 0, 989, 8, 1001, 24),
+    tile_info(32, 32, 0, 0, 0, 32, 32, 64),
+    tile_info(32, 32, 2, 1, 32, 32, 61, 61),
+    tile_info(32, 32, 3, 1, 61, 32, 89, 62),
 };
 
 tile_info &tile_icons_info(tileidx_t idx)
@@ -549,6 +564,7 @@ static _name_pair icons_name_pairs[] =
     _name_pair("drain", 38 + 0),
     _name_pair("fleeing", 32 + 0),
     _name_pair("glowing", 25 + 0),
+    _name_pair("gold_sparkles", 95 + 0),
     _name_pair("good_neutral", 15 + 0),
     _name_pair("hasted", 27 + 0),
     _name_pair("heart", 14 + 0),
