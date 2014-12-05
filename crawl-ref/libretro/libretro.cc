@@ -145,15 +145,25 @@ void process_touches(void)
     }
 }
 
+static unsigned crawl_frame_count;
+
 void process_pad(void)
 {
     if (!retrowm)
        return;
+    if (crawl_frame_count)
+       return;
 
-#if 0
     if (input_cb(0, RETRO_DEVICE_JOYPAD, 0, RETRO_DEVICE_ID_JOYPAD_LEFT))
        retrowm->push_key(true, (enum retro_key)RETROK_LEFT, (enum retro_mod)0, 0);
-#endif
+    if (input_cb(0, RETRO_DEVICE_JOYPAD, 0, RETRO_DEVICE_ID_JOYPAD_DOWN))
+       retrowm->push_key(true, (enum retro_key)RETROK_DOWN, (enum retro_mod)0, 0);
+    if (input_cb(0, RETRO_DEVICE_JOYPAD, 0, RETRO_DEVICE_ID_JOYPAD_UP))
+       retrowm->push_key(true, (enum retro_key)RETROK_UP, (enum retro_mod)0, 0);
+    if (input_cb(0, RETRO_DEVICE_JOYPAD, 0, RETRO_DEVICE_ID_JOYPAD_RIGHT))
+       retrowm->push_key(true, (enum retro_key)RETROK_RIGHT, (enum retro_mod)0, 0);
+    if (input_cb(0, RETRO_DEVICE_JOYPAD, 0, RETRO_DEVICE_ID_JOYPAD_B))
+       retrowm->push_key(true, (enum retro_key)RETROK_RETURN, (enum retro_mod)0, 0);
 }
 
 static void keyboard_event(bool down, unsigned keycode, uint32_t character, uint16_t key_modifiers)
@@ -321,6 +331,9 @@ void retro_run (void)
    fbmanager = glmanager ? (FBStateManager*)glmanager : 0;
 #endif
 
+    if (crawl_frame_count)
+       crawl_frame_count--;
+
     poll_cb();
     process_touches();
     process_pad();
@@ -338,6 +351,9 @@ void retro_run (void)
     retromanager->exit_frame();
     video_cb(have_frame ? RETRO_HW_FRAME_BUFFER_VALID : 0, SS_WIDTH, SS_HEIGHT, 0);
 #endif
+
+    if (crawl_frame_count == 0)
+       crawl_frame_count += 8;
 }
 
 // Stubs
