@@ -3514,7 +3514,7 @@ void bolt::affect_player_enchantment(bool resistible)
         break;
 
     case BEAM_CONFUSION:
-        confuse_player(3 + random2(ench_power));
+        confuse_player(5 + random2(3));
         obvious_effect = true;
         break;
 
@@ -3541,7 +3541,7 @@ void bolt::affect_player_enchantment(bool resistible)
 
     case BEAM_ENSLAVE:
         mprf(MSGCH_WARN, "Your will is overpowered!");
-        confuse_player(3 + random2(ench_power));
+        confuse_player(5 + random2(3));
         obvious_effect = true;
         break;     // enslavement - confusion?
 
@@ -3599,17 +3599,6 @@ void bolt::affect_player_enchantment(bool resistible)
         if (aux_source.empty())
             aux_source = "by dispel undead";
 
-        // reduce damage for non-hungry vampires
-        if (you.undead_state() == US_SEMI_UNDEAD)
-        {
-            if (you.hunger_state == HS_ENGORGED)
-                damage.size /= 2;
-            else if (you.hunger_state > HS_SATIATED)
-            {
-                damage.size *= 2;
-                damage.size /= 3;
-            }
-        }
         internal_ouch(damage.roll());
         obvious_effect = true;
         break;

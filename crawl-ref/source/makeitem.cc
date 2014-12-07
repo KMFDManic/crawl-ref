@@ -1426,12 +1426,6 @@ static void _generate_book_item(item_def& item, bool allow_uniques,
         {
             item.sub_type = random2(NUM_FIXED_BOOKS);
 
-            if (book_rarity(static_cast<book_type>(item.sub_type)) != 100
-                && one_chance_in(25))
-            {
-                item.sub_type = coinflip() ? BOOK_WIZARDRY : BOOK_POWER;
-            }
-
             if (!one_chance_in(100)
                 && x_chance_in_y(book_rarity(static_cast<book_type>(item.sub_type))-1, item_level+1))
             {
@@ -1743,7 +1737,16 @@ void squash_plusses(int item_slot)
 }
 
 /**
- * Create an item. This function does too much.
+ * Create an item.
+ *
+ * Various parameters determine whether the item can be an artifact, set the
+ * item class (ex. weapon, wand), set the item subtype (ex.
+ * hand axe, wand of fire), set the item ego (ex. of flaming, of running), set
+ * the rough power level of the item, and set the agent of the item (which
+ * affects what artefacts can be generated, and also non-artefact items if the
+ * agent is Xom). Item class, Item type, and Item ego can also be randomly
+ * selected (by setting those parameters to OBJ_RANDOM, OBJ_RANDOM, and 0
+ * respectively).
  *
  * @param allow_uniques Can the item generated be an artefact?
  * @param force_class The desired OBJECTS class (Example: OBJ_ARMOUR)

@@ -111,7 +111,6 @@ static const vector<spell_type> spellbook_templates[] =
     SPELL_CONFUSING_TOUCH,
     SPELL_CONFUSE,
     SPELL_PETRIFY,
-    SPELL_LEDAS_LIQUEFACTION,
     SPELL_ENGLACIATION,
     SPELL_SUMMON_MANA_VIPER,
     SPELL_GRAVITAS,
@@ -225,7 +224,7 @@ static const vector<spell_type> spellbook_templates[] =
     SPELL_RECALL,
     SPELL_ANIMATE_DEAD,
     SPELL_CONTROL_UNDEAD,
-    SPELL_BONE_ARMOUR,
+    SPELL_CIGOTUVIS_EMBRACE,
     SPELL_DEATH_CHANNEL,
     SPELL_SIMULACRUM,
 },
@@ -265,6 +264,7 @@ static const vector<spell_type> spellbook_templates[] =
     SPELL_SHATTER,
 },
 
+#if TAG_MAJOR_VERSION == 34
 {   // Book of Wizardry
     SPELL_AGONY,
     SPELL_FORCE_LANCE,
@@ -272,6 +272,7 @@ static const vector<spell_type> spellbook_templates[] =
     SPELL_INVISIBILITY,
     SPELL_SPELLFORGED_SERVITOR,
 },
+#endif
 
 {   // Book of Power
     SPELL_FULMINANT_PRISM,
@@ -280,6 +281,7 @@ static const vector<spell_type> spellbook_templates[] =
     SPELL_BOLT_OF_MAGMA,
     SPELL_IRON_SHOT,
     SPELL_IOOD,
+    SPELL_SPELLFORGED_SERVITOR,
 },
 
 {   // Book of Cantrips
@@ -297,7 +299,7 @@ static const vector<spell_type> spellbook_templates[] =
     SPELL_INTOXICATE,
 },
 
-{   // Plane Papyrus
+{   // Akashic Record
     SPELL_DISPERSAL,
     SPELL_CONTROLLED_BLINK,
     SPELL_MALIGN_GATEWAY,
