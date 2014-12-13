@@ -3409,7 +3409,8 @@ bool handle_mon_spell(monster* mons, bolt &beem)
 
                 if (new_target == nullptr
                     || mons_is_projectile(new_target->type)
-                    || mons_is_firewood(new_target))
+                    || mons_is_firewood(new_target)
+                    || new_target->friendly())
                 {
                     continue;
                 }
@@ -3891,7 +3892,7 @@ static monster_type _pick_undead_summon()
 
 static monster_type _pick_vermin()
 {
-    return random_choose_weighted(8, MONS_ORANGE_RAT,
+    return random_choose_weighted(8, MONS_HELL_RAT,
                                   5, MONS_REDBACK,
                                   2, MONS_TARANTELLA,
                                   2, MONS_JUMPING_SPIDER,
@@ -7060,6 +7061,9 @@ static void _goblin_toss_to(const monster &tosser, monster &goblin,
                                           goblin.name(DESC_A).c_str(),
                                           tosser.name(DESC_PLAIN).c_str());
     foe.hurt(&tosser, dam, BEAM_NONE, KILLED_BY_BEAM, "", killed_by, true);
+
+    // wake sleepy goblins
+    behaviour_event(&goblin, ME_DISTURB, &tosser, goblin.pos());
 }
 
 /**
