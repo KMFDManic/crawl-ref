@@ -121,6 +121,7 @@ int unrandart_to_tile(int unrand)
     case UNRAND_FIRESTARTER:                  return TILE_UNRAND_FIRESTARTER;
     case UNRAND_ORANGE_CRYSTAL_PLATE_ARMOUR:  return TILE_UNRAND_ORANGE_CRYSTAL_PLATE_ARMOUR;
     case UNRAND_MAJIN:                        return TILE_UNRAND_MAJIN;
+    case UNRAND_GYRE:                         return TILE_UNRAND_GYRE;
     default: return 0;
     }
 }
@@ -213,6 +214,7 @@ int unrandart_to_doll_tile(int unrand)
     case UNRAND_ORDER:                        return TILEP_HAND1_ORDER;
     case UNRAND_FIRESTARTER:                  return TILEP_HAND1_FIRESTARTER;
     case UNRAND_MAJIN:                        return TILEP_HAND1_MAJIN;
+    case UNRAND_GYRE:                         return TILEP_HAND1_GYRE;
     // HAND2
     case UNRAND_IGNORANCE:                    return TILEP_HAND2_LARGE_SHIELD_OF_IGNORANCE;
     case UNRAND_BULLSEYE:                     return TILEP_HAND2_SHIELD_BULLSEYE;
