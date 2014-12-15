@@ -2699,8 +2699,7 @@ static void _swing_at_target(coord_def move)
     else
     {
         list<actor*> cleave_targets;
-        if (you.can_cleave())
-            get_all_cleave_targets(&you, target, cleave_targets);
+        get_cleave_targets(&you, target, cleave_targets);
 
         if (!cleave_targets.empty())
         {

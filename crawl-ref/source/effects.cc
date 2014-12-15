@@ -52,6 +52,7 @@
 #include "notes.h"
 #include "player-stats.h"
 #include "prompt.h"
+#include "random-weight.h"
 #include "religion.h"
 #include "rot.h"
 #include "shout.h"
@@ -1235,18 +1236,40 @@ static void _random_hell_miscast()
 struct hell_effect_spec
 {
     /// The type of greater demon to spawn from hell effects.
-    monster_type fiend_type;
+    vector<monster_type> fiend_types;
     /// The appropriate theme of miscast effects to toss at the player.
     spschool_flag_type miscast_type;
+    /// A weighted list of lesser creatures to spawn.
+    vector<pair<monster_type, int>> minor_summons;
 };
 
 /// Hell effects for each branch of hell
 static map<branch_type, hell_effect_spec> hell_effects_by_branch =
 {
-    { BRANCH_DIS, { RANDOM_DEMON_GREATER, SPTYP_EARTH}},
-    { BRANCH_GEHENNA, { MONS_BRIMSTONE_FIEND, SPTYP_FIRE }},
-    { BRANCH_COCYTUS, { MONS_ICE_FIEND, SPTYP_ICE }},
-    { BRANCH_TARTARUS, { MONS_SHADOW_FIEND, SPTYP_NECROMANCY }},
+    { BRANCH_DIS, { {RANDOM_DEMON_GREATER}, SPTYP_EARTH, {
+        { RANDOM_MONSTER, 100 }, // TODO
+    }}},
+    { BRANCH_GEHENNA, { {MONS_BRIMSTONE_FIEND}, SPTYP_FIRE, {
+        { RANDOM_MONSTER, 100 }, // TODO
+    }}},
+    { BRANCH_COCYTUS, { {MONS_ICE_FIEND, MONS_SHARD_SHRIKE}, SPTYP_ICE, {
+        // total weight 100
+        { MONS_ZOMBIE, 15 },
+        { MONS_SKELETON, 10 },
+        { MONS_SIMULACRUM, 10 },
+        { MONS_FREEZING_WRAITH, 10 },
+        { MONS_FLYING_SKULL, 10 },
+        { MONS_TORMENTOR, 10 },
+        { MONS_REAPER, 10 },
+        { MONS_BONE_DRAGON, 5 },
+        { MONS_ICE_DRAGON, 5 },
+        { MONS_BLIZZARD_DEMON, 5 },
+        { MONS_BLUE_DEVIL, 5 },
+        { MONS_ICE_DEVIL, 5 },
+    }}},
+    { BRANCH_TARTARUS, { {MONS_SHADOW_FIEND}, SPTYP_NECROMANCY, {
+        { RANDOM_MONSTER, 100 }, // TODO
+    }}},
 };
 
 /**
@@ -1263,9 +1286,10 @@ static void _themed_hell_summon_or_miscast()
 
     if (x_chance_in_y(2, 5))
     {
+        const monster_type fiend
+            = spec->fiend_types[random2(spec->fiend_types.size())];
         create_monster(
-                       mgen_data::hostile_at(spec->fiend_type,
-                                             "the effects of Hell",
+                       mgen_data::hostile_at(fiend, "the effects of Hell",
                                              true, 0, 0, you.pos()));
     }
     else
@@ -1286,6 +1310,11 @@ static void _themed_hell_summon_or_miscast()
  */
 static void _minor_hell_summons()
 {
+    hell_effect_spec *spec = map_find(hell_effects_by_branch,
+                                      you.where_are_you);
+    if (!spec)
+        die("Attempting to call down a hell effect in a non-hellish branch.");
+
     // Try to summon at least one and up to five random monsters. {dlb}
     mgen_data mg;
     mg.pos = you.pos();
@@ -1294,8 +1323,16 @@ static void _minor_hell_summons()
     create_monster(mg);
 
     for (int i = 0; i < 4; ++i)
+    {
         if (one_chance_in(3))
+        {
+            monster_type *type
+                = random_choose_weighted(spec->minor_summons);
+            ASSERT(type);
+            mg.cls = *type;
             create_monster(mg);
+        }
+    }
 }
 
 /// Nasty things happen to people who spend too long in Hell.
