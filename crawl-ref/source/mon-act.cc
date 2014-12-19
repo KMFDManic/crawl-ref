@@ -878,8 +878,8 @@ static bool _handle_evoke_equipment(monster* mons, bolt & beem)
  */
 static bool _handle_swoop(monster* mons)
 {
-    // TODO: check for AT_SWOOP in other slots and/or make it work there?
-    if (mons_attack_spec(mons, 0, true).type != AT_SWOOP)
+    // TODO: check for AF_SWOOP in other slots and/or make it work there?
+    if (mons_attack_spec(mons, 0, true).flavour != AF_SWOOP)
         return false;
 
     actor *defender = mons->get_foe();
@@ -3131,8 +3131,7 @@ static bool _monster_eat_item(monster* mons, bool nearby)
         {
             quant = min(quant, max_eat - eaten);
 
-            hps_changed += (quant * item_mass(*si))
-                           / (crawl_state.game_is_zotdef() ? 30 : 20) + quant;
+            hps_changed += quant * 3;
             eaten += quant;
 
             if (mons->caught() && item_is_stationary_net(*si))

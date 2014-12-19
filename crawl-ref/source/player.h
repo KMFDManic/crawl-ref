@@ -614,7 +614,7 @@ public:
     bool malmutate(const string &reason);
     bool polymorph(int pow);
     void backlight();
-    void banish(actor *agent, const string &who = "");
+    void banish(actor* /*agent*/, const string &who = "");
     void blink(bool allow_partial_control = true);
     void teleport(bool right_now = false,
                   bool wizard_tele = false);
@@ -870,7 +870,7 @@ bool player_in_hell();
 static inline bool player_in_branch(int branch)
 {
     return you.where_are_you == branch;
-};
+}
 
 bool berserk_check_wielded_weapon();
 bool player_equip_unrand(int unrand_index);

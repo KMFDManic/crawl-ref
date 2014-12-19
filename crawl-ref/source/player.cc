@@ -2555,10 +2555,8 @@ int player_armour_shield_spell_penalty()
  */
 int player_wizardry(spell_type spell)
 {
-    const int item_wiz = you.wearing(EQ_RINGS, RING_WIZARDRY)
-                          + you.wearing(EQ_STAFF, STAFF_WIZARDRY);
-    const int form_wiz = you.form == TRAN_DRAGON && spell == SPELL_DRAGON_CALL;
-    return item_wiz + form_wiz;
+    return you.wearing(EQ_RINGS, RING_WIZARDRY)
+           + you.wearing(EQ_STAFF, STAFF_WIZARDRY);
 }
 
 /**
@@ -6076,7 +6074,7 @@ void player::god_conduct(conduct_type thing_done, int level)
     ::did_god_conduct(thing_done, level);
 }
 
-void player::banish(actor *agent, const string &who)
+void player::banish(actor* /*agent*/, const string &who)
 {
     ASSERT(!crawl_state.game_is_arena());
     if (brdepth[BRANCH_ABYSS] == -1)
@@ -6090,8 +6088,6 @@ void player::banish(actor *agent, const string &who)
 
     banished    = true;
     banished_by = who;
-
-    run_animation(ANIMATION_BANISH, UA_BRANCH_ENTRY, false);
 }
 
 // For semi-undead species (Vampire!) reduce food cost for spells and abilities
@@ -6205,24 +6201,35 @@ int player::missile_deflection() const
 
 void player::ablate_deflection()
 {
-    int power;
+    const int orig_defl = missile_deflection();
+
+    bool did_something = false;
     if (attribute[ATTR_DEFLECT_MISSILES])
     {
-        power = calc_spell_power(SPELL_DEFLECT_MISSILES, true);
+        const int power = calc_spell_power(SPELL_DEFLECT_MISSILES, true);
         if (one_chance_in(2 + power / 8))
         {
             attribute[ATTR_DEFLECT_MISSILES] = 0;
-            mprf(MSGCH_DURATION, "You feel less protected from missiles.");
+            did_something = true;
         }
     }
     else if (attribute[ATTR_REPEL_MISSILES])
     {
-        power = calc_spell_power(SPELL_REPEL_MISSILES, true);
+        const int power = calc_spell_power(SPELL_REPEL_MISSILES, true);
         if (one_chance_in(2 + power / 8))
         {
             attribute[ATTR_REPEL_MISSILES] = 0;
-            mprf(MSGCH_DURATION, "You feel less protected from missiles.");
+            did_something = true;
         }
+    }
+
+    if (did_something)
+    {
+        // We might also have the effect from a non-expiring source.
+        mprf(MSGCH_DURATION, "You feel %s from missiles.",
+                             missile_deflection() < orig_defl
+                                 ? "less protected"
+                                 : "your spell is no longer protecting you");
     }
 }
 

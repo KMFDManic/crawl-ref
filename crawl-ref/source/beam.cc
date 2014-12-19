@@ -609,12 +609,10 @@ void bolt::initialise_fire()
     if (you.see_cell(source) && target == source && visible())
         seen = true;
 
-    // The agent may die during the beam's firing, need to save this
-    // now.
-    if (agent() && agent()->nightvision())
-        nightvision = true;
-    if (agent() && agent()->can_see_invisible())
-        can_see_invis = true;
+    // XXX: Should non-agents count as seeing invisible?
+    // The agent may die during the beam's firing, need to save these now.
+    nightvision = agent() && agent()->nightvision();
+    can_see_invis = agent() && agent()->can_see_invisible();
 
 #ifdef DEBUG_DIAGNOSTICS
     // Not a "real" tracer, merely a range/reachability check.
@@ -4562,56 +4560,53 @@ void bolt::knockback_actor(actor *act, int dam)
 {
     if (!can_knockback(act, dam))
         return;
-    const coord_def oldpos(act->pos());
-    coord_def newpos(act->pos());
 
     const int distance =
         (origin_spell == SPELL_FORCE_LANCE)
             ? 1 + div_rand_round(ench_power, 40) :
         (origin_spell == SPELL_CHILLING_BREATH) ? 2 : 1;
 
+    const int roll = origin_spell == SPELL_FORCE_LANCE
+                     ? 1000 + 40 * ench_power
+                     : 2500;
+
+    const int weight = act->body_weight() / (act->airborne() ? 2 : 1);
+
+    const coord_def oldpos = act->pos();
+    ASSERT(ray.pos() == oldpos);
+
+    if (act->is_stationary())
+        return;
     // We can't do knockback if the beam starts and ends on the same space
     if (source == oldpos)
         return;
 
-    if (act->is_stationary())
-        return;
-
-    const int roll = origin_spell == SPELL_FORCE_LANCE
-                     ? 1000 + 40 * ench_power
-                     : 2500;
-    const int weight = act->body_weight() / (act->airborne() ? 2 : 1);
-
-    ASSERT(ray.pos() == oldpos);
-
+    coord_def newpos = oldpos;
     for (int dist_travelled = 0; dist_travelled < distance; ++dist_travelled)
     {
         // Save is based on target's body weight.
         if (random2(roll) < weight)
             continue;
 
-        const ray_def ray_copy(ray);
+        const ray_def oldray(ray);
 
         ray.advance();
 
         newpos = ray.pos();
-        if (newpos == ray_copy.pos()
+        if (newpos == oldray.pos()
             || cell_is_solid(newpos)
             || actor_at(newpos)
             || !act->can_pass_through(newpos)
             || !act->is_habitable(newpos))
         {
-            ray = ray_copy;
-            if (newpos == oldpos)
-                return;
+            ray = oldray;
+            break;
         }
 
         act->move_to_pos(newpos);
     }
 
-    // Knockback cannot ever kill the actor directly - caller must do
-    // apply_location_effects after messaging.
-    if (ray.pos() == oldpos)
+    if (newpos == oldpos)
         return;
 
     if (you.can_see(act))
@@ -6332,7 +6327,8 @@ bolt::bolt() : origin_spell(SPELL_NO_SPELL),
                attitude(ATT_HOSTILE), foe_ratio(0),
                chose_ray(false), beam_cancelled(false),
                dont_stop_player(false), bounces(false), bounce_pos(),
-               reflections(0), reflector(MID_NOBODY), auto_hit(false)
+               reflections(0), reflector(MID_NOBODY), auto_hit(false),
+               can_see_invis(false), nightvision(false)
 {
 }
 

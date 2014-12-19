@@ -2494,8 +2494,6 @@ string melee_attack::mons_attack_verb()
 #endif
         "pounce on",
         "sting",
-        "kite",  // should never display
-        "swoop", // ditto
     };
     COMPILE_CHECK(ARRAYSZ(attack_types) == AT_LAST_REAL_ATTACK);
 
@@ -2710,7 +2708,7 @@ bool melee_attack::mons_attack_effects()
         return defender->alive();
     }
 
-    if (attacker != defender && attk_type == AT_TRAMPLE)
+    if (attacker != defender && attk_flavour == AF_TRAMPLE)
         do_knockback();
 
     special_damage = 0;
@@ -2999,7 +2997,7 @@ void melee_attack::mons_apply_attack_flavour()
     {
         // Only wasps at the moment, so Zin vitalisation
         // protects from the paralysis and slow.
-        if (you.duration[DUR_DIVINE_STAMINA] > 0)
+        if (defender->is_player() && you.duration[DUR_DIVINE_STAMINA] > 0)
         {
             mpr("Your divine stamina protects you from poison!");
             break;
