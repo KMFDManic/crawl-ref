@@ -48,6 +48,12 @@ class targetter;
 
 int check_stealth();
 
+// needed for assert in is_player()
+#ifdef DEBUG_GLOBALS
+#define you (*real_you)
+#endif
+extern player you;
+
 typedef FixedVector<int, NUM_DURATIONS> durations_t;
 class player : public actor
 {
@@ -664,6 +670,7 @@ public:
     bool is_unbreathing() const;
     bool is_insubstantial() const;
     int res_acid(bool calc_unid = true) const;
+    bool res_hellfire() const { return false; };
     int res_fire() const;
     int res_steam() const;
     int res_cold() const;
@@ -808,11 +815,6 @@ protected:
     void _removed_fearmonger(bool quiet = false);
     bool _possible_fearmonger(const monster* mon) const;
 };
-
-#ifdef DEBUG_GLOBALS
-#define you (*real_you)
-#endif
-extern player you;
 
 struct player_save_info
 {

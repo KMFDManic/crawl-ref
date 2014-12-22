@@ -1546,6 +1546,10 @@ static bool _animate_dead_okay(spell_type spell)
     if (god_hates_spell(spell, you.religion))
         return false;
 
+    // Annoying to drag around hordes of the undead as well as the living.
+    if (you_worship(GOD_BEOGH))
+        return false;
+
     return true;
 }
 
@@ -4085,10 +4089,7 @@ static bool _mons_cast_freeze(monster* mons)
     int damage = 0;
 
     if (target->is_player())
-    {
-        damage = resist_adjust_damage(&you, BEAM_COLD, player_res_cold(),
-                                      base_damage, true);
-    }
+        damage = resist_adjust_damage(&you, BEAM_COLD, base_damage);
     else
     {
         bolt beam;
@@ -7206,13 +7207,16 @@ static void _goblin_toss_to(const monster &tosser, monster &goblin,
     const coord_def old_pos = goblin.pos();
     const bool thrower_seen = you.can_see(&tosser);
     const bool victim_was_seen = you.can_see(&foe);
+    const bool victim_will_be_seen = foe.visible_to(&you)
+                                     && you.see_cell(chosen_dest);
+    const bool victim_seen = victim_was_seen || victim_will_be_seen;
 
     if (!(goblin.flags & MF_WAS_IN_VIEW))
         goblin.seen_context = SC_THROWN_IN;
 
     if (thrower_seen || victim_was_seen)
     {
-        const string victim_name = goblin.name(DESC_THE);
+        const string victim_name = goblin.name(DESC_THE, true);
         const string thrower_name = tosser.name(DESC_THE);
         const string destination = you.can_see(&foe) ?
                                    make_stringf("at %s",
@@ -7221,7 +7225,7 @@ static void _goblin_toss_to(const monster &tosser, monster &goblin,
 
         mprf("%s throws %s %s!",
              (thrower_seen ? thrower_name.c_str() : "Something"),
-             (victim_was_seen ? victim_name.c_str() : "something"),
+             (victim_seen ? victim_name.c_str() : "something"),
              destination.c_str());
 
         bolt beam;
@@ -7853,7 +7857,7 @@ static bool _ms_waste_of_time(monster* mon, mon_spell_slot slot)
 
         int power = 12 * mon->spell_hd(monspell)
                        * (monspell == SPELL_PAIN ? 2 : 1);
-        power = stepdown_value(power, 30, 40, 100, 120);
+        power = ench_power_stepdown(power);
 
         // Determine the amount of chance allowed by the benefit from
         // the spell.  The estimated difficulty is the probability

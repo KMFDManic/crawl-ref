@@ -980,19 +980,14 @@ int player::wearing(equipment_type slot, int sub_type, bool calc_unid) const
     {
     case EQ_WEAPON:
         // Hands can have more than just weapons.
-        if (weapon()
-            && weapon()->base_type == OBJ_WEAPONS
-            && weapon()->sub_type == sub_type)
-        {
+        if (weapon() && weapon()->is_type(OBJ_WEAPONS, sub_type))
             ret++;
-        }
         break;
 
     case EQ_STAFF:
         // Like above, but must be magical staff.
         if (weapon()
-            && weapon()->base_type == OBJ_STAVES
-            && weapon()->sub_type == sub_type
+            && weapon()->is_type(OBJ_STAVES, sub_type)
             && (calc_unid || item_type_known(*weapon())))
         {
             ret++;
@@ -5177,7 +5172,7 @@ void dec_napalm_player(int delay)
     expose_player_to_element(BEAM_STICKY_FLAME,
                              div_rand_round(delay * 4, BASELINE_DELAY));
 
-    const int hurted = resist_adjust_damage(&you, BEAM_FIRE, player_res_fire(),
+    const int hurted = resist_adjust_damage(&you, BEAM_FIRE,
                                             random2avg(9, 2) + 1);
 
     ouch(hurted * delay / BASELINE_DELAY, KILLED_BY_BURNING);
@@ -7299,8 +7294,7 @@ void player::splash_with_acid(const actor* evildoer, int acid_strength,
     dam += 2;
     dam = roll_dice(dam, acid_strength);
 
-    const int post_res_dam = resist_adjust_damage(&you, BEAM_ACID,
-                                                  you.res_acid(), dam);
+    const int post_res_dam = resist_adjust_damage(&you, BEAM_ACID, dam);
 
     if (post_res_dam > 0)
     {
@@ -7844,7 +7838,7 @@ bool player::polymorph(int pow)
               1, TRAN_DRAGON,
               0);
         // need to do a dry run first, as Zin's protection has a random factor
-        if (transform(pow, f, false, true))
+        if (transform(pow, f, true, true))
             break;
         f = TRAN_NONE;
     }
