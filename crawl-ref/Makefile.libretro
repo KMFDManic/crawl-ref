@@ -94,6 +94,9 @@ $(TARGET): $(OBJECTS)
 %.o: %.c
 	$(CC) $(INCFLAGS) $(CFLAGS) -c -o $@ $<
 
+%.o: %.cpp
+	$(CXX) $(INCFLAGS) $(CXXFLAGS) -c -o $@ $<
+
 generate:
 	cd source && ./util/gen-mst.pl
 	cd source && ./util/art-data.pl
