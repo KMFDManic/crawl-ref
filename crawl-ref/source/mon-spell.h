@@ -304,8 +304,8 @@ static const mon_spellbook mspell_list[] =
 
     {  MST_MOTTLED_DRAGON,
       {
-       { SPELL_STICKY_FLAME_SPLASH, 55, MON_SPELL_NATURAL | MON_SPELL_BREATH
-                                         | MON_SPELL_NOISY },
+       { SPELL_STICKY_FLAME_RANGE, 55, MON_SPELL_NATURAL | MON_SPELL_BREATH
+                                        | MON_SPELL_NOISY },
       }
     },
 
@@ -623,7 +623,7 @@ static const mon_spellbook mspell_list[] =
 
     {  MST_HELL_HOG,
       {
-       { SPELL_STICKY_FLAME_SPLASH, 61, MON_SPELL_NATURAL },
+       { SPELL_STICKY_FLAME, 61, MON_SPELL_NATURAL },
       }
     },
 
@@ -1287,7 +1287,7 @@ static const mon_spellbook mspell_list[] =
        { SPELL_MAGIC_DART, 13, MON_SPELL_WIZARD },
        { SPELL_SLOW, 13, MON_SPELL_WIZARD },
        { SPELL_CALL_IMP, 13, MON_SPELL_WIZARD },
-       { SPELL_MEPHITIC_CLOUD, 13, MON_SPELL_WIZARD },
+       { SPELL_CONJURE_FLAME, 13, MON_SPELL_WIZARD },
       }
     },
 
@@ -1410,14 +1410,7 @@ static const mon_spellbook mspell_list[] =
     {  MST_FAUN_II,
       {
        { SPELL_CORONA, 15, MON_SPELL_WIZARD },
-       { SPELL_SLOW, 15, MON_SPELL_WIZARD },
-      }
-    },
-
-    {  MST_FAUN_III,
-      {
-       { SPELL_CORONA, 15, MON_SPELL_WIZARD },
-       { SPELL_CONFUSE, 15, MON_SPELL_WIZARD },
+       { SPELL_CONFUSE, 10, MON_SPELL_WIZARD },
       }
     },
 
@@ -1649,12 +1642,14 @@ static const mon_spellbook mspell_list[] =
 
     {  MST_NAGA_SNIPER,
       {
+       { SPELL_SPIT_POISON, 55, MON_SPELL_NATURAL | MON_SPELL_BREATH },
        { SPELL_PORTAL_PROJECTILE, 59, MON_SPELL_WIZARD },
       }
     },
 
     {  MST_NAGA_RITUALIST,
       {
+       { SPELL_SPIT_POISON, 55, MON_SPELL_NATURAL | MON_SPELL_BREATH },
        { SPELL_FORCE_LANCE, 12, MON_SPELL_WIZARD },
        { SPELL_OLGREBS_TOXIC_RADIANCE, 23, MON_SPELL_WIZARD },
        { SPELL_VIRULENCE, 23, MON_SPELL_WIZARD },
@@ -1726,6 +1721,7 @@ static const mon_spellbook mspell_list[] =
 
     {  MST_VASHNIA,
       {
+       { SPELL_SPIT_POISON, 55, MON_SPELL_NATURAL | MON_SPELL_BREATH },
        { SPELL_PORTAL_PROJECTILE, 22, MON_SPELL_WIZARD },
        { SPELL_BLINK_ALLIES_AWAY, 22, MON_SPELL_WIZARD },
        { SPELL_BLINK_AWAY, 11, MON_SPELL_WIZARD },
@@ -2048,11 +2044,10 @@ static const mon_spellbook mspell_list[] =
 
     {  MST_ANUBIS_GUARD,
       {
-       { SPELL_HUNTING_CRY, 50, MON_SPELL_NATURAL | MON_SPELL_NOISY
+       { SPELL_HUNTING_CRY, 56, MON_SPELL_NATURAL | MON_SPELL_NOISY
                                 | MON_SPELL_NO_SILENT | MON_SPELL_BREATH },
-       { SPELL_BOLT_OF_DRAINING, 50, MON_SPELL_NATURAL | MON_SPELL_BREATH },
-       { SPELL_DISPEL_UNDEAD, 38, MON_SPELL_PRIEST },
-       { SPELL_CONTROL_UNDEAD, 19, MON_SPELL_PRIEST },
+       { SPELL_BOLT_OF_DRAINING, 56, MON_SPELL_NATURAL | MON_SPELL_BREATH },
+       { SPELL_DISPEL_UNDEAD, 44, MON_SPELL_PRIEST },
       }
     },
 

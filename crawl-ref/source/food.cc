@@ -93,18 +93,37 @@ void make_hungry(int hunger_amount, bool suppress_msg,
         _describe_food_change(-hunger_amount);
 }
 
-void lessen_hunger(int satiated_amount, bool suppress_msg)
+// Must match the order of hunger_state_t enums
+static constexpr int hunger_threshold[HS_ENGORGED + 1] =
+{ HUNGER_STARVING, HUNGER_NEAR_STARVING, HUNGER_VERY_HUNGRY, HUNGER_HUNGRY,
+    HUNGER_SATIATED, HUNGER_FULL, HUNGER_VERY_FULL, HUNGER_ENGORGED };
+
+/**
+ * Attempt to reduce the player's hunger.
+ *
+ * @param satiated_amount       The amount by which to reduce hunger by.
+ * @param suppress_msg          Whether to squelch messages about hunger
+ *                              decreasing.
+ * @param max                   The maximum hunger state which the player may
+ *                              reach. If -1, defaults to HUNGER_MAXIMUM.
+ */
+void lessen_hunger(int satiated_amount, bool suppress_msg, int max)
 {
     if (you_foodless())
         return;
 
     you.hunger += satiated_amount;
 
-    if (you.hunger > HUNGER_MAXIMUM)
-        you.hunger = HUNGER_MAXIMUM;
+    const hunger_state_t max_hunger_state = max == -1 ? HS_ENGORGED
+                                                      : (hunger_state_t) max;
+    ASSERT_RANGE(max_hunger_state, 0, HS_ENGORGED + 1);
+    const int max_hunger = min(HUNGER_MAXIMUM,
+                               hunger_threshold[max_hunger_state]);
+    if (you.hunger > max_hunger)
+        you.hunger = max_hunger;
 
     // So we don't get two messages, ever.
-    bool state_message = food_change();
+    const bool state_message = food_change();
 
     if (!suppress_msg && !state_message)
         _describe_food_change(satiated_amount);
@@ -250,11 +269,6 @@ static string _how_hungry()
         return "thirsty";
     return "hungry";
 }
-
-// Must match the order of hunger_state_t enums
-static constexpr int hunger_threshold[HS_ENGORGED + 1] =
-    { HUNGER_STARVING, HUNGER_NEAR_STARVING, HUNGER_VERY_HUNGRY, HUNGER_HUNGRY,
-      HUNGER_SATIATED, HUNGER_FULL, HUNGER_VERY_FULL, HUNGER_ENGORGED };
 
 // "initial" is true when setting the player's initial hunger state on game
 // start or load: in that case it's not really a change, so we suppress the
@@ -496,7 +510,7 @@ int eat_from_floor(bool skip_chunks)
     item_def wonteat;
     bool found_valid = false;
 
-    vector<const item_def*> food_items;
+    vector<item_def*> food_items;
     for (stack_iterator si(you.pos(), true); si; ++si)
     {
         if (si->base_type != OBJ_FOOD)
@@ -552,7 +566,7 @@ int eat_from_floor(bool skip_chunks)
         }
 #else
         sort(food_items.begin(), food_items.end(), _compare_by_freshness);
-        for (const item_def *item : food_items)
+        for (item_def *item : food_items)
         {
             string item_name = get_menu_colour_prefix_tags(*item, DESC_A);
 
@@ -574,7 +588,7 @@ int eat_from_floor(bool skip_chunks)
                     break;
 
                 if (can_eat(*item, false))
-                    return eat_item(*const_cast<item_def *>(item));
+                    return eat_item(*item);
                 need_more = true;
                 break;
             case 'i':
@@ -1083,10 +1097,21 @@ void finished_eating_message(int food_type)
         break;
     case FOOD_PIZZA:
     {
-        string taste = getMiscString("eating_pizza");
+        if (!Options.pizzas.empty())
+        {
+            const string za = Options.pizzas[random2(Options.pizzas.size())];
+            mprf("Mmm... %s.", trimmed_string(za).c_str());
+            break;
+        }
+
+        const string taste = getMiscString("eating_pizza");
         if (taste.empty())
-            taste = "Bleh, bug pizza.";
-        mpr(taste);
+        {
+            mpr("Bleh, bug pizza.");
+            break;
+        }
+
+        mprf("%s", taste.c_str());
         break;
     }
     default:
@@ -1573,7 +1598,7 @@ string hunger_cost_string(const int hunger)
 
 #ifdef WIZARD
     if (you.wizard)
-        return make_stringf("%d", hunger);
+        return to_string(hunger);
 #endif
 
     const int numbars = hunger_bars(hunger);

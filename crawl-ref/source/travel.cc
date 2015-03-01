@@ -241,11 +241,8 @@ bool feat_is_traversable_now(dungeon_feature_type grid, bool try_fallback)
             return true;
 
         // Permanently flying players can cross most hostile terrain.
-        if (grid == DNGN_DEEP_WATER || grid == DNGN_LAVA
-            || grid == DNGN_TRAP_MECHANICAL || grid == DNGN_TRAP_SHAFT)
-        {
+        if (grid == DNGN_DEEP_WATER || grid == DNGN_LAVA)
             return you.permanent_flight();
-        }
 
         // You can't open doors in bat form.
         if (grid == DNGN_CLOSED_DOOR || grid == DNGN_RUNED_DOOR)
@@ -3882,8 +3879,8 @@ bool TravelCache::is_known_branch(uint8_t branch) const
 void TravelCache::save(writer& outf) const
 {
     // Travel cache version information
-    marshallByte(outf, TAG_MAJOR_VERSION);
-    marshallByte(outf, TAG_MINOR_VERSION);
+    marshallUByte(outf, TAG_MAJOR_VERSION);
+    marshallUByte(outf, TAG_MINOR_VERSION);
 
     // Write level count.
     marshallShort(outf, levels.size());
@@ -3903,8 +3900,8 @@ void TravelCache::load(reader& inf, int minorVersion)
     levels.clear();
 
     // Check version. If not compatible, we just ignore the file altogether.
-    int major = unmarshallByte(inf),
-        minor = unmarshallByte(inf);
+    int major = unmarshallUByte(inf),
+        minor = unmarshallUByte(inf);
     if (major != TAG_MAJOR_VERSION || minor > TAG_MINOR_VERSION)
         return;
 
@@ -4283,25 +4280,29 @@ void explore_discoveries::found_feature(const coord_def &pos,
         add_stair(portal);
         es_flags |= ES_PORTAL;
     }
-    else if (feat == DNGN_RUNED_DOOR && ES_rdoor)
+    else if (feat == DNGN_RUNED_DOOR)
     {
-        for (orth_adjacent_iterator ai(pos); ai; ++ai)
+        seen_runed_door();
+        if (ES_rdoor)
         {
-            // If any neighbours have been seen (and thus announced) before,
-            // skip.  For parts seen for the first time this turn, announce
-            // only the upper leftmost cell.
-            if (env.map_knowledge(*ai).feat() == DNGN_RUNED_DOOR
-                && (env.map_seen(*ai) || *ai < pos))
+            for (orth_adjacent_iterator ai(pos); ai; ++ai)
             {
-                return;
+                // If any neighbours have been seen (and thus announced) before,
+                // skip.  For parts seen for the first time this turn, announce
+                // only the upper leftmost cell.
+                if (env.map_knowledge(*ai).feat() == DNGN_RUNED_DOOR
+                    && (env.map_seen(*ai) || *ai < pos))
+                {
+                    return;
+                }
             }
-        }
 
-        string desc = env.markers.property_at(pos, MAT_ANY, "stop_explore");
-        if (desc.empty())
-            desc = cleaned_feature_description(pos);
-        runed_doors.emplace_back(desc, 1);
-        es_flags |= ES_RUNED_DOOR;
+            string desc = env.markers.property_at(pos, MAT_ANY, "stop_explore");
+            if (desc.empty())
+                desc = cleaned_feature_description(pos);
+            runed_doors.emplace_back(desc, 1);
+            es_flags |= ES_RUNED_DOOR;
+       }
     }
     else if (feat_is_altar(feat) && ES_altar)
     {

@@ -61,7 +61,7 @@ int list_spells(bool toggle_with_I = true, bool viewing = false,
                 bool allow_preselect = true,
                 const string &title = "Your Spells",
                 spell_selector selector = nullptr);
-int spell_fail(spell_type spell);
+int raw_spell_fail(spell_type spell);
 int calc_spell_power(spell_type spell, bool apply_intel,
                      bool fail_rate_chk = false, bool cap_power = true,
                      bool rod = false);
@@ -72,15 +72,18 @@ bool cast_a_spell(bool check_range, spell_type spell = SPELL_NO_SPELL);
 void inspect_spells();
 void do_cast_spell_cmd(bool force);
 
+int hex_success_chance(const int mr, int powc, int scale);
 vector<string> desc_success_chance(const monster_info& mi, int pow);
 spret_type your_spells(spell_type spell, int powc = 0, bool allow_fail = true,
     bool evoked = false);
+
+extern const char *fail_severity_adjs[];
 
 double get_miscast_chance(spell_type spell, int severity = 2);
 int fail_severity(spell_type spell);
 int failure_rate_colour(spell_type spell);
 int failure_rate_to_int(int fail);
-char* failure_rate_to_string(int fail);
+string failure_rate_to_string(int fail);
 
 int power_to_barcount(int power);
 

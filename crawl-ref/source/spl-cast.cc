@@ -18,7 +18,6 @@
 #include "colour.h"
 #include "describe.h"
 #include "directn.h"
-#include "effects.h"
 #include "english.h"
 #include "env.h"
 #include "exercise.h"
@@ -119,9 +118,8 @@ static string _spell_base_description(spell_type spell, bool viewing)
     // spell fail rate, level
     highlight = failure_rate_colour(spell);
     desc << "<" << colour_to_str(highlight) << ">";
-    char* failure = failure_rate_to_string(spell_fail(spell));
+    const string failure = failure_rate_to_string(raw_spell_fail(spell));
     desc << chop_string(failure, 12);
-    free(failure);
     desc << "</" << colour_to_str(highlight) << ">";
     desc << spell_difficulty(spell);
 
@@ -310,7 +308,7 @@ static int _apply_spellcasting_success_boosts(spell_type spell, int chance)
     return chance * fail_reduce / 100;
 }
 
-int spell_fail(spell_type spell)
+int raw_spell_fail(spell_type spell)
 {
     int chance = 60;
 
@@ -322,22 +320,24 @@ int spell_fail(spell_type spell)
     dprf("Armour+Shield spell failure penalty: %d", armour_shield_penalty);
     chance += armour_shield_penalty;
 
-    switch (spell_difficulty(spell))
+    static const int difficulty_by_level[] =
     {
-    case  1: chance +=   3; break;
-    case  2: chance +=  15; break;
-    case  3: chance +=  35; break;
-    case  4: chance +=  70; break;
-    case  5: chance += 100; break;
-    case  6: chance += 150; break;
-    case  7: chance += 200; break;
-    case  8: chance += 260; break;
-    case  9: chance += 330; break;
-    case 10: chance += 420; break;
-    case 11: chance += 500; break;
-    case 12: chance += 600; break;
-    default: chance += 750; break;
-    }
+        0,
+        3,
+        15,
+        35,
+
+        70,
+        100,
+        150,
+
+        200,
+        260,
+        330,
+    };
+    const int spell_level = spell_difficulty(spell);
+    ASSERT_RANGE(spell_level, 0, (int) ARRAYSZ(difficulty_by_level));
+    chance += difficulty_by_level[spell_level];
 
 #if TAG_MAJOR_VERSION == 34
     // Only apply this penalty to Dj because other species lose nutrition
@@ -398,14 +398,14 @@ int calc_spell_power(spell_type spell, bool apply_intel, bool fail_rate_check,
         power = 5 + you.skill(SK_EVOCATIONS, 3);
     else
     {
-        unsigned int disciplines = get_spell_disciplines(spell);
+        spschools_type disciplines = get_spell_disciplines(spell);
 
         int skillcount = count_bits(disciplines);
         if (skillcount)
         {
             for (int ndx = 0; ndx <= SPTYP_LAST_EXPONENT; ndx++)
             {
-                unsigned int bit = (1 << ndx);
+                const auto bit = spschools_type::exponent(ndx);
                 if (disciplines & bit)
                     power += you.skill(spell_type2skill(bit), 200);
             }
@@ -785,7 +785,8 @@ bool cast_a_spell(bool check_range, spell_type spell)
     //
     // I'm disabling this code for now except for excommunication, please
     // re-enable if you can fix it.
-    if (/*god_hates_spell*/god_loathes_spell(spell, you.religion))
+    if (/*god_hates_spell*/god_loathes_spell(spell, you.religion)
+        && !crawl_state.disables[DIS_CONFIRMATIONS])
     {
         // None currently dock just piety, right?
         if (!yesno(god_loathes_spell(spell, you.religion) ?
@@ -796,6 +797,23 @@ bool cast_a_spell(bool check_range, spell_type spell)
         {
             canned_msg(MSG_OK);
             crawl_state.zero_turns_taken();
+            return false;
+        }
+    }
+
+    int severity = fail_severity(spell);
+    if (Options.fail_severity_to_confirm > 0
+        && Options.fail_severity_to_confirm <= severity
+        && !crawl_state.disables[DIS_CONFIRMATIONS])
+    {
+        string prompt = make_stringf("The spell is %s to cast%s "
+                                     "Continue anyway?",
+                                     fail_severity_adjs[severity],
+                                     severity > 1 ? "!" : ".");
+
+        if (!yesno(prompt.c_str(), false, 'n'))
+        {
+            canned_msg(MSG_OK);
             return false;
         }
     }
@@ -1160,9 +1178,10 @@ static int _triangular_number(int n)
  * @param powc The enchantment power.
  * @param scale The denominator of the result.
  *
- * @return The chance, out of scale, that the enchantment affects the target.
+ * @return The chance, out of scale (rounded down), that the enchantment
+ * affects the target.
  */
-static int _success_chance(const int mr, int powc, int scale)
+int hex_success_chance(const int mr, int powc, int scale)
 {
     powc = ench_power_stepdown(powc);
     const int target = mr + 100 - powc;
@@ -1172,7 +1191,7 @@ static int _success_chance(const int mr, int powc, int scale)
     if (target > 200)
         return 0;
     if (target <= 100)
-        return scale - scale * _triangular_number(target) / (101 * 100);
+        return scale * (101 * 100 - _triangular_number(target)) / (101 * 100);
     return scale * _triangular_number(201 - target) / (101 * 100);
 }
 
@@ -1186,7 +1205,7 @@ vector<string> desc_success_chance(const monster_info& mi, int pow)
     else
     {
         descs.push_back(make_stringf("chance %d%%",
-                                     _success_chance(mr, pow, 100)).c_str());
+                                     hex_success_chance(mr, pow, 100)).c_str());
     }
     return descs;
 }
@@ -1318,7 +1337,7 @@ spret_type your_spells(spell_type spell, int powc,
         }
     }
 
-    // Enhancers only matter for calc_spell_power() and spell_fail().
+    // Enhancers only matter for calc_spell_power() and raw_spell_fail().
     // Not sure about this: is it flavour or misleading? (jpeg)
     if (allow_fail)
         _surge_power(spell);
@@ -1379,7 +1398,7 @@ spret_type your_spells(spell_type spell, int powc,
                           random2avg(88, 3), "the malice of Vehumet");
         }
 
-        const int spfail_chance = spell_fail(spell);
+        const int spfail_chance = raw_spell_fail(spell);
 
         if (spfl < spfail_chance)
             fail = spfail_chance - spfl;
@@ -1728,8 +1747,11 @@ static spret_type _do_cast(spell_type spell, int powc,
     case SPELL_SPELLFORGED_SERVITOR:
         return cast_spellforged_servitor(powc, god, fail);
 
+#if TAG_MAJOR_VERSION == 34
     case SPELL_FORCEFUL_DISMISSAL:
-        return cast_forceful_dismissal(powc, fail);
+        mpr("Sorry, this spell is gone!");
+        return SPRET_ABORT;
+#endif
 
     case SPELL_SPECTRAL_WEAPON:
         return cast_spectral_weapon(&you, powc, god, fail);
@@ -1993,25 +2015,37 @@ static int _tetrahedral_number(int n)
 // Called only by failure_rate_to_int and get_miscast_chance.
 static double _get_true_fail_rate(int raw_fail)
 {
-    //Need random2(101) + random2(101) + random2(100) to be less than 3*raw_fail.
-    //Fun with tetrahedral numbers!
+    // Need 3*random2avg(100,3) = random2(101) + random2(101) + random2(100)
+    // to be (strictly) less than 3*raw_fail. Fun with tetrahedral numbers!
 
-    int target = raw_fail * 3;
+    // How many possible outcomes, considering all three dice?
+    const int outcomes = 101 * 101 * 100;
+    const int target = raw_fail * 3;
 
     if (target <= 100)
-        return (double) _tetrahedral_number(target)/1020100;
+    {
+        // The failures are exactly the triples of nonnegative integers
+        // that sum to < target.
+        return double(_tetrahedral_number(target)) / outcomes;
+    }
     if (target <= 200)
     {
-        //PIE: the negative term takes the maximum of 100 (or 99) into
-        //consideration.  Note that only one term can exceed it in this case,
-        //which is why this works.
-        return (double) (_tetrahedral_number(target)
-                         - 2*_tetrahedral_number(target - 101)
-                         - _tetrahedral_number(target - 100)) / 1020100;
+        // Some of the triples that sum to < target would have numbers
+        // greater than 100, or a last number greater than 99, so aren't
+        // possible outcomes. Apply the principle of inclusion-exclusion
+        // by subtracting out these cases. The set of triples with first
+        // number > 100 is isomorphic to the set of triples that sum to
+        // 101 less; likewise for the second and third numbers (100 less
+        // in the last case). Two or more out-of-range numbers would have
+        // resulted in a sum of at least 201, so there is no overlap
+        // among the three cases we are subtracting.
+        return double(_tetrahedral_number(target)
+                      - 2 * _tetrahedral_number(target - 101)
+                      - _tetrahedral_number(target - 100)) / outcomes;
     }
-    //The random2avg distribution is symmetric, so the last interval is
-    //essentially the same as the first interval.
-    return (double) (1020100 - _tetrahedral_number(300 - target)) / 1020100;
+    // The random2avg distribution is symmetric, so the last interval is
+    // essentially the same as the first interval.
+    return double(outcomes - _tetrahedral_number(300 - target)) / outcomes;
 }
 
 /**
@@ -2022,7 +2056,7 @@ static double _get_true_fail_rate(int raw_fail)
  */
 double get_miscast_chance(spell_type spell, int severity)
 {
-    int raw_fail = spell_fail(spell);
+    int raw_fail = raw_spell_fail(spell);
     int level = spell_difficulty(spell);
     if (severity <= 0)
         return _get_true_fail_rate(raw_fail);
@@ -2047,6 +2081,14 @@ static double _get_miscast_chance_with_miscast_prot(spell_type spell)
     return chance;
 }
 
+const char *fail_severity_adjs[] =
+{
+    "safe",
+    "slightly dangerous",
+    "quite dangerous",
+    "very dangerous",
+};
+
 int fail_severity(spell_type spell)
 {
     const double chance = _get_miscast_chance_with_miscast_prot(spell);
@@ -2055,6 +2097,7 @@ int fail_severity(spell_type spell)
            (chance < 0.005) ? 1 :
            (chance < 0.025) ? 2
                             : 3;
+    COMPILE_CHECK(ARRAYSZ(fail_severity_adjs) > 3);
 }
 
 // Chooses a colour for the failure rate display for a spell. The colour is
@@ -2079,13 +2122,15 @@ int failure_rate_to_int(int fail)
         return max(1, (int) (100 * _get_true_fail_rate(fail)));
 }
 
-//Note that this char[] is allocated on the heap, so anything calling
-//this function will also need to call free()!
-char* failure_rate_to_string(int fail)
+/**
+ * Convert the given failure rate into a percent, and return it as a string.
+ *
+ * @param fail      A raw failure rate (not a percent!)
+ * @return          E.g. "79%".
+ */
+string failure_rate_to_string(int fail)
 {
-    char *buffer = (char *)malloc(9);
-    sprintf(buffer, "%d%%", failure_rate_to_int(fail));
-    return buffer;
+    return make_stringf("%d%%", failure_rate_to_int(fail));
 }
 
 string spell_hunger_string(spell_type spell, bool rod)
@@ -2230,11 +2275,12 @@ string spell_schools_string(spell_type spell)
     bool already = false;
     for (int i = 0; i <= SPTYP_LAST_EXPONENT; ++i)
     {
-        if (spell_typematch(spell, (1<<i)))
+        const auto bit = spschools_type::exponent(i);
+        if (spell_typematch(spell, bit))
         {
             if (already)
                 desc += "/";
-            desc += spelltype_long_name(1 << i);
+            desc += spelltype_long_name(bit);
             already = true;
         }
     }
@@ -2244,10 +2290,10 @@ string spell_schools_string(spell_type spell)
 
 void spell_skills(spell_type spell, set<skill_type> &skills)
 {
-    unsigned int disciplines = get_spell_disciplines(spell);
+    spschools_type disciplines = get_spell_disciplines(spell);
     for (int i = 0; i <= SPTYP_LAST_EXPONENT; ++i)
     {
-        const unsigned int bit = (1 << i);
+        const auto bit = spschools_type::exponent(i);
         if (disciplines & bit)
             skills.insert(spell_type2skill(bit));
     }

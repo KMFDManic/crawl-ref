@@ -2,7 +2,6 @@
 #define SPL_SUMMONING_H
 
 #include "beam.h"
-#include "data-index.h"
 #include "enum.h"
 #include "itemprop-enum.h"
 #include "spl-cast.h"
@@ -73,8 +72,6 @@ void do_dragon_call(int time);
 void init_servitor(monster* servitor, actor* caster);
 spret_type cast_spellforged_servitor(int pow, god_type god, bool fail);
 
-spret_type cast_forceful_dismissal(int pow, bool fail);
-
 int animate_remains(const coord_def &a, corpse_type class_allowed,
                     beh_type beha, unsigned short hitting,
                     actor *as = nullptr, string nas = "",
@@ -113,6 +110,7 @@ spret_type cast_fulminating_prism(actor* caster, int pow,
                                   const coord_def& where, bool fail);
 
 monster* find_spectral_weapon(const actor* agent);
+bool weapon_can_be_spectral(const item_def *weapon);
 spret_type cast_spectral_weapon(actor *agent, int pow, god_type god, bool fail);
 void end_spectral_weapon(monster* mons, bool killed, bool quiet = false);
 bool trigger_spectral_weapon(actor* agent, const actor* target);
@@ -130,26 +128,6 @@ void summoned_monster(const monster* mons, const actor* caster,
 bool summons_are_capped(spell_type spell);
 int summons_limit(spell_type spell);
 int count_summons(const actor *summoner, spell_type spell);
-
-struct summons_desc // : public data_index_entry<spell_type>
-{
-    // XXX: Assumes that all summons types from each spell are equal,
-    // this is probably fine for now, but will need thought if a spell
-    // needs to have two separate caps
-    spell_type which;
-    int type_cap;               // Maximum number for this type
-    int timeout;                // Timeout length for replaced summons
-};
-
-class summons_index : public data_index<spell_type, summons_desc, NUM_SPELLS>
-{
-public:
-    summons_index(const summons_desc* _pop)
-        : data_index<spell_type, summons_desc, NUM_SPELLS>(_pop)
-    {};
-
-protected:
-    spell_type map(const summons_desc* val);
-};
+void summon_twister(int power_level);
 
 #endif

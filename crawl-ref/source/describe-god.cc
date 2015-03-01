@@ -51,10 +51,8 @@ static bool _print_final_god_abil_desc(int god, const string &final_msg,
     // "Various" instead of the cost of the first ability.
     const string cost =
     "(" +
-    ((abil == ABIL_ELYVILON_LESSER_HEALING_SELF
-      || abil == ABIL_ELYVILON_GREATER_HEALING_OTHERS
-      || abil == ABIL_YRED_RECALL_UNDEAD_SLAVES) ?
-     "Various" : make_cost_description(abil))
+    (abil == ABIL_YRED_RECALL_UNDEAD_SLAVES ? "Various"
+                                            : make_cost_description(abil))
     + ")";
 
     if (cost != "(None)")
@@ -72,15 +70,6 @@ static bool _print_final_god_abil_desc(int god, const string &final_msg,
 
 static bool _print_god_abil_desc(int god, int numpower)
 {
-    // Combine the two lesser healing powers together.
-    if (god == GOD_ELYVILON && numpower == 0)
-    {
-        _print_final_god_abil_desc(god,
-                                   "You can provide lesser healing for yourself"
-                                   " and others.",
-                                   ABIL_ELYVILON_LESSER_HEALING_SELF);
-        return true;
-    }
     const char* pmsg = god_gain_power_messages[god][numpower];
 
     // If no message then no power.
@@ -210,12 +199,6 @@ static string _religion_help(god_type god)
             break;
         }
 
-        case GOD_ELYVILON:
-            result += "You can pray to destroy weapons on the ground in "
-            + apostrophise(god_name(god)) + " name. Inscribe them "
-            "with !p, !* or =p to avoid sacrificing them accidentally.";
-            break;
-
         case GOD_LUGONU:
             if (can_do_capstone_ability(god))
             {
@@ -242,14 +225,6 @@ static string _religion_help(god_type god)
             {
                 result += "Evolving plants requires fruit, and evolving "
                           "fungi requires piety.";
-            }
-            break;
-
-        case GOD_GOZAG:
-            if (can_do_capstone_ability(god))
-            {
-                result += "You can place a non-artefact item on an altar and "
-                          "pray to duplicate that item.";
             }
             break;
 
@@ -344,7 +319,7 @@ static const char *divine_title[NUM_GODS][8] =
 
     // Cheibriados -- slow theme
     {"Hasty",              "Sluggish @Genus@",      "Deliberate",               "Unhurried",
-     "Contemplative",         "Epochal",               "Timeless",                 "@Adj@ Eon"},
+     "Contemplative",         "Epochal",               "Timeless",                 "@Adj@ Aeon"},
 
     // Ashenzari -- divination theme
     {"Star-crossed",       "Cursed",                "Initiated",                "Soothsayer",
@@ -501,18 +476,19 @@ static void _list_bribable_branches(vector<branch_type> &targets)
  */
 static string _describe_branch_bribability()
 {
-    string ret = "You can bribe the following branches:\n";
+    string ret = "You can bribe the following branches of the dungeon:\n";
     vector<branch_type> targets;
     _list_bribable_branches(targets);
 
     size_t width = 0;
     for (branch_type br : targets)
-        width = max(width, strlen(branches[br].longname));
+        width = max(width, strlen(branches[br].shortname));
 
     for (branch_type br : targets)
     {
-        string line(branches[br].longname);
-        line += string(width + 1 - strwidth(line), ' ');
+        string line = " ";
+        line += branches[br].shortname;
+        line += string(width + 2 - strwidth(line), ' ');
         // XXX: move this elsewhere?
         switch (br)
         {
@@ -773,9 +749,8 @@ static string _get_god_misc_info(god_type which_god)
                    "worse on monsters of your species, worse on other "
                    "species, worst of all on demons and undead, and not at "
                    "all on sleeping or mindless monsters. If it succeeds, "
-                   "you gain half of the monster's experience value and "
-                   "possibly some piety. Pacified monsters try to leave the "
-                   "level.";
+                   "you gain half of the monster's experience value. Pacified "
+                   "monsters try to leave the level.";
 
         case GOD_NEMELEX_XOBEH:
             return "The power of Nemelex Xobeh's abilities and of the "
@@ -986,17 +961,6 @@ static void _describe_god_powers(god_type which_god, int numcols)
                                        uppercase_first(god_name(which_god))
                                        + " slows and strengthens your metabolism.",
                                        ABIL_NON_ABILITY);
-        }
-    }
-    else if (which_god == GOD_ELYVILON)
-    {
-        // Only print this here if we don't have lesser self-healing.
-        if (you.piety < piety_breakpoint(0) || player_under_penance())
-        {
-            have_any = true;
-            _print_final_god_abil_desc(which_god,
-                                       "You can provide lesser healing for others.",
-                                       ABIL_ELYVILON_LESSER_HEALING_OTHERS);
         }
     }
     else if (which_god == GOD_VEHUMET)

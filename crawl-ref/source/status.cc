@@ -293,8 +293,7 @@ bool fill_status_info(int status, status_info* inf)
 
     case DUR_CONFUSING_TOUCH:
     {
-        inf->long_text = string("Your ") + you.hand_name(true)
-                         + " are glowing red.";
+        inf->long_text = you.hands_act("are", "glowing red.");
         break;
     }
 
@@ -786,8 +785,9 @@ static void _describe_poison(status_info* inf)
          (pois_perc > 65)   ? "seriously" :
          (pois_perc > 35)   ? "quite"
                             : "mildly";
-    inf->short_text   = adj + " poisoned";
-    inf->long_text    = "You are " + inf->short_text + make_stringf(" (%d -> %d).", you.hp, poison_survival());
+    inf->short_text   = adj + " poisoned"
+        + make_stringf(" (%d -> %d)", you.hp, poison_survival());
+    inf->long_text    = "You are " + inf->short_text + ".";
 }
 
 static void _describe_speed(status_info* inf)
@@ -855,10 +855,12 @@ static void _describe_rotting(status_info* inf)
         else if (rot > 4)
             inf->long_text += " badly";
         else if (you.species == SP_GHOUL)
+        {
             if (rot > 2)
                 inf->long_text += " faster than usual";
             else
                 inf->long_text += " at the usual pace";
+        }
         inf->long_text += ".";
     }
 }

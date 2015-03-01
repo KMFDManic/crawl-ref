@@ -55,11 +55,11 @@ int player::dex(bool nonneg) const
     return stat(STAT_DEX, nonneg);
 }
 
-static int _stat_modifier(stat_type stat);
+static int _stat_modifier(stat_type stat, bool innate_only);
 
 int player::max_stat(stat_type s) const
 {
-    return min(base_stats[s] + _stat_modifier(s), 72);
+    return min(base_stats[s] + _stat_modifier(s, false), 72);
 }
 
 int player::max_strength() const
@@ -76,6 +76,13 @@ int player::max_dex() const
 {
     return max_stat(STAT_DEX);
 }
+
+// Base stat including innate mutations (which base_stats does not)
+static int _base_stat(stat_type s)
+{
+    return min(you.base_stats[s] + _stat_modifier(s, true), 72);
+}
+
 
 static void _handle_stat_change(stat_type stat, bool see_source = true);
 static void _handle_stat_change(bool see_source = true);
@@ -108,14 +115,14 @@ bool attribute_increase()
 #else
     mprf(MSGCH_INTRINSIC_GAIN, "Your experience leads to an increase in your attributes!");
     learned_something_new(HINT_CHOOSE_STAT);
-    if (you.base_stats[STAT_STR] != you.strength()
-        || you.base_stats[STAT_INT] != you.intel()
-        || you.base_stats[STAT_DEX] != you.dex())
+    if (_base_stat(STAT_STR) != you.strength()
+        || _base_stat(STAT_INT) != you.intel()
+        || _base_stat(STAT_DEX) != you.dex())
     {
         mprf(MSGCH_PROMPT, "Your base attributes are Str %d, Int %d, Dex %d.",
-             you.base_stats[STAT_STR],
-             you.base_stats[STAT_INT],
-             you.base_stats[STAT_DEX]);
+             _base_stat(STAT_STR),
+             _base_stat(STAT_INT),
+             _base_stat(STAT_DEX));
     }
     mprf(MSGCH_PROMPT, "Increase (S)trength, (I)ntelligence, or (D)exterity? ");
 #endif
@@ -213,10 +220,8 @@ void jiyva_stat_action()
     {
         int magic_weights = 0;
         int other_weights = 0;
-        for (int i = SK_FIRST_SKILL; i < NUM_SKILLS; i++)
+        for (skill_type sk = SK_FIRST_SKILL; sk < NUM_SKILLS; ++sk)
         {
-            skill_type sk = static_cast<skill_type>(i);
-
             int weight = you.skills[sk];
 
             if (sk >= SK_SPELLCASTING && sk < SK_INVOCATIONS)
@@ -224,25 +229,23 @@ void jiyva_stat_action()
             else
                 other_weights += weight;
         }
+        // We give pure Int weighting if the player is sufficiently
+        // focused on magic skills.
+        other_weights = max(other_weights - magic_weights / 2, 0);
 
-        // Heavy armour weights towards strength, Dodging skill towards
-        // dexterity.  EVP 15 (chain) is enough to weight towards pure Str in
-        // the absence of dodging skill, but 15 dodging will will push that
-        // back to pure Dex.
-        int str_weight = (10 * evp - you.skill(SK_DODGING, 10)) / 15;
-        // Clip weight between 0 (pure dex) and 10 (pure strength).
-        str_weight = min(10, max(0, str_weight));
-
-        // If you are in really heavy armour, then you already are getting a
-        // lot of Str and more won't help much, so weight magic more.
-        other_weights = max(other_weights - (evp >= 15 ? 4 : 1)
-                            * magic_weights / 2, 0);
+        // Now scale appropriately and apply the Int weighting
         magic_weights = div_rand_round(remaining * magic_weights,
                                        magic_weights + other_weights);
         other_weights = remaining - magic_weights;
         target_stat[1] += magic_weights;
 
-        const int str_adj = div_rand_round(other_weights * str_weight, 10);
+        // Heavy armour weights towards Str, Dodging skill towards Dex.
+        int str_weight = 10 * evp;
+        int dex_weight = 10 + you.skill(SK_DODGING, 10);
+
+        // Now apply the Str and Dex weighting.
+        const int str_adj = div_rand_round(other_weights * str_weight,
+                                           str_weight + dex_weight);
         target_stat[0] += str_adj;
         target_stat[2] += (other_weights - str_adj);
     }
@@ -363,114 +366,130 @@ void notify_stat_change()
     _handle_stat_change();
 }
 
-static int _strength_modifier()
+static int _mut_level(mutation_type mut, bool innate)
+{
+    return innate ? you.innate_mutation[mut] : player_mutation_level(mut);
+}
+
+static int _strength_modifier(bool innate_only)
 {
     int result = 0;
 
-    if (you.duration[DUR_MIGHT] || you.duration[DUR_BERSERK])
-        result += 5;
+    if (!innate_only)
+    {
+        if (you.duration[DUR_MIGHT] || you.duration[DUR_BERSERK])
+            result += 5;
 
-    if (you.duration[DUR_FORTITUDE])
-        result += 10;
+        if (you.duration[DUR_FORTITUDE])
+            result += 10;
 
-    if (you.duration[DUR_DIVINE_STAMINA])
-        result += you.attribute[ATTR_DIVINE_STAMINA];
+        if (you.duration[DUR_DIVINE_STAMINA])
+            result += you.attribute[ATTR_DIVINE_STAMINA];
 
-    result += chei_stat_boost();
+        result += chei_stat_boost();
 
-    // ego items of strength
-    result += 3 * count_worn_ego(SPARM_STRENGTH);
+        // ego items of strength
+        result += 3 * count_worn_ego(SPARM_STRENGTH);
 
-    // rings of strength
-    result += you.wearing(EQ_RINGS_PLUS, RING_STRENGTH);
+        // rings of strength
+        result += you.wearing(EQ_RINGS_PLUS, RING_STRENGTH);
 
-    // randarts of strength
-    result += you.scan_artefacts(ARTP_STRENGTH);
+        // randarts of strength
+        result += you.scan_artefacts(ARTP_STRENGTH);
+
+        // form
+        result += get_form()->str_mod;
+    }
 
     // mutations
-    result += 2 * (player_mutation_level(MUT_STRONG)
-                  - player_mutation_level(MUT_WEAK));
+    result += 2 * (_mut_level(MUT_STRONG, innate_only)
+                   - _mut_level(MUT_WEAK, innate_only));
 #if TAG_MAJOR_VERSION == 34
-    result += player_mutation_level(MUT_STRONG_STIFF)
-              - player_mutation_level(MUT_FLEXIBLE_WEAK);
+    result += _mut_level(MUT_STRONG_STIFF, innate_only)
+              - _mut_level(MUT_FLEXIBLE_WEAK, innate_only);
 #endif
 
-    result += get_form()->str_mod;
+    return result;
+}
+
+static int _int_modifier(bool innate_only)
+{
+    int result = 0;
+
+    if (!innate_only)
+    {
+        if (you.duration[DUR_BRILLIANCE])
+            result += 5;
+
+        if (you.duration[DUR_DIVINE_STAMINA])
+            result += you.attribute[ATTR_DIVINE_STAMINA];
+
+        result += chei_stat_boost();
+
+        // ego items of intelligence
+        result += 3 * count_worn_ego(SPARM_INTELLIGENCE);
+
+        // rings of intelligence
+        result += you.wearing(EQ_RINGS_PLUS, RING_INTELLIGENCE);
+
+        // randarts of intelligence
+        result += you.scan_artefacts(ARTP_INTELLIGENCE);
+    }
+
+    // mutations
+    result += 2 * (_mut_level(MUT_CLEVER, innate_only)
+                   - _mut_level(MUT_DOPEY, innate_only));
 
     return result;
 }
 
-static int _int_modifier()
+static int _dex_modifier(bool innate_only)
 {
     int result = 0;
 
-    if (you.duration[DUR_BRILLIANCE])
-        result += 5;
+    if (!innate_only)
+    {
+        if (you.duration[DUR_AGILITY])
+            result += 5;
 
-    if (you.duration[DUR_DIVINE_STAMINA])
-        result += you.attribute[ATTR_DIVINE_STAMINA];
+        if (you.duration[DUR_DIVINE_STAMINA])
+            result += you.attribute[ATTR_DIVINE_STAMINA];
 
-    result += chei_stat_boost();
+        result += chei_stat_boost();
 
-    // ego items of intelligence
-    result += 3 * count_worn_ego(SPARM_INTELLIGENCE);
+        // ego items of dexterity
+        result += 3 * count_worn_ego(SPARM_DEXTERITY);
 
-    // rings of intelligence
-    result += you.wearing(EQ_RINGS_PLUS, RING_INTELLIGENCE);
+        // rings of dexterity
+        result += you.wearing(EQ_RINGS_PLUS, RING_DEXTERITY);
 
-    // randarts of intelligence
-    result += you.scan_artefacts(ARTP_INTELLIGENCE);
+        // randarts of dexterity
+        result += you.scan_artefacts(ARTP_DEXTERITY);
 
-    // mutations
-    result += 2 * (player_mutation_level(MUT_CLEVER)
-                  - player_mutation_level(MUT_DOPEY));
-
-    return result;
-}
-
-static int _dex_modifier()
-{
-    int result = 0;
-
-    if (you.duration[DUR_AGILITY])
-        result += 5;
-
-    if (you.duration[DUR_DIVINE_STAMINA])
-        result += you.attribute[ATTR_DIVINE_STAMINA];
-
-    result += chei_stat_boost();
-
-    // ego items of dexterity
-    result += 3 * count_worn_ego(SPARM_DEXTERITY);
-
-    // rings of dexterity
-    result += you.wearing(EQ_RINGS_PLUS, RING_DEXTERITY);
-
-    // randarts of dexterity
-    result += you.scan_artefacts(ARTP_DEXTERITY);
+        // form
+        result += get_form()->dex_mod;
+    }
 
     // mutations
-    result += 2 * (player_mutation_level(MUT_AGILE)
-                  - player_mutation_level(MUT_CLUMSY));
+    result += 2 * (_mut_level(MUT_AGILE, innate_only)
+                  - _mut_level(MUT_CLUMSY, innate_only));
 #if TAG_MAJOR_VERSION == 34
-    result += player_mutation_level(MUT_FLEXIBLE_WEAK)
-              - player_mutation_level(MUT_STRONG_STIFF);
+    result += _mut_level(MUT_FLEXIBLE_WEAK, innate_only)
+              - _mut_level(MUT_STRONG_STIFF, innate_only);
 #endif
-    result += 2 * player_mutation_level(MUT_THIN_SKELETAL_STRUCTURE);
-    result -= player_mutation_level(MUT_ROUGH_BLACK_SCALES);
-
-    result += get_form()->dex_mod;
+    result += 2 * _mut_level(MUT_THIN_SKELETAL_STRUCTURE, innate_only);
+    result -= _mut_level(MUT_ROUGH_BLACK_SCALES, innate_only);
 
     return result;
 }
 
-static int _stat_modifier(stat_type stat)
+static int _stat_modifier(stat_type stat, bool innate_only)
 {
     switch (stat)
     {
-    case STAT_STR: return _strength_modifier();
-    case STAT_INT: return _int_modifier();
-    case STAT_DEX: return _dex_modifier();
+    case STAT_STR: return _strength_modifier(innate_only);
+    case STAT_INT: return _int_modifier(innate_only);
+    case STAT_DEX: return _dex_modifier(innate_only);
     default:
         mprf(MSGCH_ERROR, "Bad stat: %d", stat);
         return 0;

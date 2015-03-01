@@ -7,9 +7,10 @@
 
 #include "godabil.h"
 
+#include <cmath>
+#include <numeric>
 #include <queue>
 #include <sstream>
-#include <numeric>
 
 #include "act-iter.h"
 #include "areas.h"
@@ -24,7 +25,6 @@
 #include "dgn-overview.h"
 #include "directn.h"
 #include "dungeon.h"
-#include "effects.h"
 #include "english.h"
 #include "fight.h"
 #include "files.h"
@@ -61,9 +61,11 @@
 #include "potion.h"
 #include "prompt.h"
 #include "religion.h"
+#include "rot.h"
 #include "shout.h"
 #include "skill_menu.h"
 #include "spl-book.h"
+#include "spl-goditem.h"
 #include "spl-monench.h"
 #include "spl-summoning.h"
 #include "spl-transloc.h"
@@ -72,11 +74,13 @@
 #include "state.h"
 #include "stringutil.h"
 #include "target.h"
+#include "teleport.h" // monster_teleport
 #include "terrain.h"
 #include "throw.h"
 #ifdef USE_TILE
  #include "tiledef-main.h"
 #endif
+#include "timed_effects.h"
 #include "traps.h"
 #include "viewchar.h"
 #include "view.h"
@@ -1945,6 +1949,378 @@ bool fedhas_shoot_through(const bolt& beam, const monster* victim)
                || victim->neutral());
 }
 
+// Basically we want to break a circle into n_arcs equal sized arcs and find
+// out which arc the input point pos falls on.
+static int _arc_decomposition(const coord_def & pos, int n_arcs)
+{
+    float theta = atan2((float)pos.y, (float)pos.x);
+
+    if (pos.x == 0 && pos.y != 0)
+        theta = pos.y > 0 ? PI / 2 : -PI / 2;
+
+    if (theta < 0)
+        theta += 2 * PI;
+
+    float arc_angle = 2 * PI / n_arcs;
+
+    theta += arc_angle / 2.0f;
+
+    if (theta >= 2 * PI)
+        theta -= 2 * PI;
+
+    return static_cast<int> (theta / arc_angle);
+}
+
+int place_ring(vector<coord_def> &ring_points,
+               const coord_def &origin,
+               mgen_data prototype,
+               int n_arcs,
+               int arc_occupancy,
+               int &seen_count)
+{
+    shuffle_array(ring_points);
+
+    int target_amount = ring_points.size();
+    int spawned_count = 0;
+    seen_count = 0;
+
+    vector<int> arc_counts(n_arcs, arc_occupancy);
+
+    for (unsigned i = 0;
+         spawned_count < target_amount && i < ring_points.size();
+         i++)
+    {
+        int direction = _arc_decomposition(ring_points.at(i)
+                                           - origin, n_arcs);
+
+        if (arc_counts[direction]-- <= 0)
+            continue;
+
+        prototype.pos = ring_points.at(i);
+
+        if (create_monster(prototype, false))
+        {
+            spawned_count++;
+            if (you.see_cell(ring_points.at(i)))
+                seen_count++;
+        }
+    }
+
+    return spawned_count;
+}
+
+// Collect lists of points that are within LOS (under the given env map),
+// unoccupied, and not solid (walls/statues).
+void collect_radius_points(vector<vector<coord_def> > &radius_points,
+                           const coord_def &origin, los_type los)
+{
+    radius_points.clear();
+    radius_points.resize(LOS_RADIUS);
+
+    // Just want to associate a point with a distance here for convenience.
+    typedef pair<coord_def, int> coord_dist;
+
+    // Using a priority queue because squares don't make very good circles at
+    // larger radii.  We will visit points in order of increasing euclidean
+    // distance from the origin (not path distance).  We want a min queue
+    // based on the distance, so we use greater_second as the comparator.
+    priority_queue<coord_dist, vector<coord_dist>,
+                   greater_second<coord_dist> > fringe;
+
+    fringe.push(coord_dist(origin, 0));
+
+    set<int> visited_indices;
+
+    int current_r = 1;
+    int current_thresh = current_r * (current_r + 1);
+
+    int max_distance = LOS_RADIUS * LOS_RADIUS + 1;
+
+    while (!fringe.empty())
+    {
+        coord_dist current = fringe.top();
+        // We're done here once we hit a point that is farther away from the
+        // origin than our maximum permissible radius.
+        if (current.second > max_distance)
+            break;
+
+        fringe.pop();
+
+        int idx = current.first.x + current.first.y * X_WIDTH;
+        if (!visited_indices.insert(idx).second)
+            continue;
+
+        while (current.second > current_thresh)
+        {
+            current_r++;
+            current_thresh = current_r * (current_r + 1);
+        }
+
+        // We don't include radius 0.  This is also a good place to check if
+        // the squares are already occupied since we want to search past
+        // occupied squares but don't want to consider them valid targets.
+        if (current.second && !actor_at(current.first))
+            radius_points[current_r - 1].push_back(current.first);
+
+        for (adjacent_iterator i(current.first); i; ++i)
+        {
+            coord_dist temp(*i, current.second);
+
+            // If the grid is out of LOS, skip it.
+            if (!cell_see_cell(origin, temp.first, los))
+                continue;
+
+            coord_def local = temp.first - origin;
+
+            temp.second = local.abs();
+
+            idx = temp.first.x + temp.first.y * X_WIDTH;
+
+            if (!visited_indices.count(idx)
+                && in_bounds(temp.first)
+                && !cell_is_solid(temp.first))
+            {
+                fringe.push(temp);
+            }
+        }
+
+    }
+}
+
+static int _mushroom_prob(item_def & corpse)
+{
+    int low_threshold = 5;
+    int high_threshold = FRESHEST_CORPSE - 5;
+
+    // Expect this many trials over a corpse's lifetime since this function
+    // is called once for every 10 units of rot_time.
+    int step_size = 10;
+    float total_trials = (high_threshold - low_threshold) / step_size;
+
+    // Chance of producing no mushrooms (not really because of weight_factor
+    // below).
+    float p_failure = 0.5f;
+
+    float trial_prob_f = 1 - powf(p_failure, 1.0f / total_trials);
+
+    // The chance of producing mushrooms depends on the weight of the
+    // corpse involved.  Humans weigh 550 so we will take that as the
+    // base factor here.
+    float weight_factor = mons_weight(corpse.mon_type) / 550.0f;
+
+    trial_prob_f *= weight_factor;
+
+    int trial_prob = static_cast<int>(100 * trial_prob_f);
+
+    return trial_prob;
+}
+
+static bool _mushroom_spawn_message(int seen_targets, int seen_corpses)
+{
+    if (seen_targets <= 0)
+        return false;
+
+    string what  = seen_targets  > 1 ? "Some toadstools"
+                                     : "A toadstool";
+    string where = seen_corpses  > 1 ? "nearby corpses" :
+                   seen_corpses == 1 ? "a nearby corpse"
+                                     : "the ground";
+    mprf("%s grow%s from %s.",
+         what.c_str(), seen_targets > 1 ? "" : "s", where.c_str());
+
+    return true;
+}
+
+// Place a partial ring of toadstools around the given corpse.  Returns
+// the number of mushrooms spawned.  A return of 0 indicates no
+// mushrooms were placed -> some sort of failure mode was reached.
+static int _mushroom_ring(item_def &corpse, int & seen_count)
+{
+    // minimum number of mushrooms spawned on a given ring
+    unsigned min_spawn = 2;
+
+    seen_count = 0;
+
+    vector<vector<coord_def> > radius_points;
+
+    collect_radius_points(radius_points, corpse.pos, LOS_SOLID);
+
+    // So what we have done so far is collect the set of points at each radius
+    // reachable from the origin with (somewhat constrained) 8 connectivity,
+    // now we will choose one of those radii and spawn mushrooms at some
+    // of the points along it.
+    int chosen_idx = random2(LOS_RADIUS);
+
+    unsigned max_size = 0;
+    for (unsigned i = 0; i < LOS_RADIUS; ++i)
+    {
+        if (radius_points[i].size() >= max_size)
+        {
+            max_size = radius_points[i].size();
+            chosen_idx = i;
+        }
+    }
+
+    chosen_idx = random2(chosen_idx + 1);
+
+    // Not enough valid points?
+    if (radius_points[chosen_idx].size() < min_spawn)
+        return 0;
+
+    mgen_data temp(MONS_TOADSTOOL,
+                   BEH_GOOD_NEUTRAL, 0, 0, 0,
+                   coord_def(),
+                   MHITNOT,
+                   MG_FORCE_PLACE,
+                   GOD_NO_GOD,
+                   MONS_NO_MONSTER,
+                   0,
+                   corpse.get_colour());
+
+    float target_arc_len = 2 * sqrtf(2.0f);
+
+    int n_arcs = static_cast<int> (ceilf(2 * PI * (chosen_idx + 1)
+                                   / target_arc_len));
+
+    int spawned_count = place_ring(radius_points[chosen_idx], corpse.pos, temp,
+                                   n_arcs, 1, seen_count);
+
+    return spawned_count;
+}
+
+// Try to spawn 'target_count' mushrooms around the position of
+// 'corpse'.  Returns the number of mushrooms actually spawned.
+// Mushrooms radiate outwards from the corpse following bfs with
+// 8-connectivity.  Could change the expansion pattern by using a
+// priority queue for sequencing (priority = distance from origin under
+// some metric).
+static int _spawn_corpse_mushrooms(item_def& corpse,
+                                  int target_count,
+                                  int& seen_targets)
+
+{
+    seen_targets = 0;
+    if (target_count == 0)
+        return 0;
+
+    int placed_targets = 0;
+
+    queue<coord_def> fringe;
+    set<int> visited_indices;
+
+    // Slight chance of spawning a ring of mushrooms around the corpse (and
+    // skeletonising it) if the corpse square is unoccupied.
+    if (!actor_at(corpse.pos) && one_chance_in(100))
+    {
+        int ring_seen;
+        // It's possible no reasonable ring can be found, in that case we'll
+        // give up and just place a toadstool on top of the corpse (probably).
+        int res = _mushroom_ring(corpse, ring_seen);
+
+        if (res)
+        {
+            corpse.special = 0;
+
+            if (you.see_cell(corpse.pos))
+                mpr("A ring of toadstools grows before your very eyes.");
+            else if (ring_seen > 1)
+                mpr("Some toadstools grow in a peculiar arc.");
+            else if (ring_seen > 0)
+                mpr("A toadstool grows.");
+
+            seen_targets = -1;
+
+            return res;
+        }
+    }
+
+    visited_indices.insert(X_WIDTH * corpse.pos.y + corpse.pos.x);
+    fringe.push(corpse.pos);
+
+    while (!fringe.empty())
+    {
+        coord_def current = fringe.front();
+
+        fringe.pop();
+
+        monster* mons = monster_at(current);
+
+        bool player_occupant = you.pos() == current;
+
+        // Is this square occupied by a non mushroom?
+        if (mons && mons->mons_species() != MONS_TOADSTOOL
+            || player_occupant && !you_worship(GOD_FEDHAS)
+            || !can_spawn_mushrooms(current))
+        {
+            continue;
+        }
+
+        if (!mons)
+        {
+            monster *mushroom = create_monster(
+                        mgen_data(MONS_TOADSTOOL,
+                                  BEH_GOOD_NEUTRAL,
+                                  0,
+                                  0,
+                                  0,
+                                  current,
+                                  MHITNOT,
+                                  MG_FORCE_PLACE,
+                                  GOD_NO_GOD,
+                                  MONS_NO_MONSTER,
+                                  0,
+                                  corpse.get_colour()),
+                                  false);
+
+            if (mushroom)
+            {
+                // Going to explicitly override the die-off timer in
+                // this case since, we're creating a lot of toadstools
+                // at once that should die off quickly.
+                coord_def offset = corpse.pos - current;
+
+                int dist = static_cast<int>(sqrtf(offset.abs()) + 0.5);
+
+                // Trying a longer base duration...
+                int time_left = random2(8) + dist * 8 + 8;
+
+                time_left *= 10;
+
+                mon_enchant temp_en(ENCH_SLOWLY_DYING, 1, 0, time_left);
+                mushroom->update_ench(temp_en);
+
+                placed_targets++;
+                if (current == you.pos())
+                {
+                    mprf("A toadstool grows %s.",
+                         player_has_feet() ? "at your feet" : "before you");
+                    current = mushroom->pos();
+                }
+                else if (you.see_cell(current))
+                    seen_targets++;
+            }
+            else
+                continue;
+        }
+
+        // We're done here if we placed the desired number of mushrooms.
+        if (placed_targets == target_count)
+            break;
+
+        for (fair_adjacent_iterator ai(current); ai; ++ai)
+        {
+            if (in_bounds(*ai) && mons_class_can_pass(MONS_TOADSTOOL, grd(*ai)))
+            {
+                const int index = ai->x + ai->y * X_WIDTH;
+                if (visited_indices.insert(index).second)
+                    fringe.push(*ai); // Not previously visited.
+            }
+        }
+    }
+
+    return placed_targets;
+}
+
 // Turns corpses in LOS into skeletons and grows toadstools on them.
 // Can also turn zombies into skeletons and destroy ghoul-type monsters.
 // Returns the number of corpses consumed.
@@ -2043,11 +2419,10 @@ int fedhas_fungal_bloom()
             {
                 corpse_on_pos = true;
 
-                const int trial_prob = mushroom_prob(*j);
+                const int trial_prob = _mushroom_prob(*j);
                 const int target_count = 1 + binomial(20, trial_prob);
                 int seen_per;
-                spawn_corpse_mushrooms(*j, target_count, seen_per,
-                                       BEH_GOOD_NEUTRAL, true);
+                _spawn_corpse_mushrooms(*j, target_count, seen_per);
 
                 // Either turn this corpse into a skeleton or destroy it.
                 if (mons_skeleton(j->mon_type))
@@ -2069,7 +2444,7 @@ int fedhas_fungal_bloom()
     }
 
     if (seen_mushrooms > 0)
-        mushroom_spawn_message(seen_mushrooms, seen_corpses);
+        _mushroom_spawn_message(seen_mushrooms, seen_corpses);
 
     if (kills)
         mpr("That felt like a moral victory.");
@@ -2818,13 +3193,11 @@ int fedhas_corpse_spores(beh_type attitude)
 struct monster_conversion
 {
     monster_conversion() :
-        base_monster(nullptr),
         piety_cost(0),
         fruit_cost(0)
     {
     }
 
-    monster* base_monster;
     int piety_cost;
     int fruit_cost;
     monster_type new_type;
@@ -2834,10 +3207,10 @@ struct monster_conversion
 // fedhas_evolve_flora() can upgrade it, and set up a monster_conversion
 // structure for it.  Return true (and fill in possible_monster) if the
 // monster can be upgraded, and return false otherwise.
-static bool _possible_evolution(const monster* input,
+static bool _possible_evolution(const monster_info& input,
                                 monster_conversion& possible_monster)
 {
-    switch (input->type)
+    switch (input.type)
     {
     case MONS_PLANT:
     case MONS_BUSH:
@@ -2869,10 +3242,18 @@ static bool _possible_evolution(const monster* input,
     return true;
 }
 
+static vector<string> _evolution_name(const monster_info& mon)
+{
+    monster_conversion conversion;
+    if (!_possible_evolution(mon, conversion))
+        return { "cannot be evolved" };
+    return { "can evolve into " + mons_type_name(conversion.new_type, DESC_A) };
+}
+
 bool mons_is_evolvable(const monster* mon)
 {
     monster_conversion temp;
-    return _possible_evolution(mon, temp);
+    return _possible_evolution(monster_info(mon), temp);
 }
 
 static bool _place_ballisto(const coord_def& pos)
@@ -2948,6 +3329,7 @@ bool fedhas_check_evolve_flora(bool quiet)
     args.cancel_at_self = true;
     args.show_floor_desc = true;
     args.top_prompt = "Select plant or fungus to evolve.";
+    args.get_desc_func = _evolution_name;
 
     direction(spelld, args);
 
@@ -2976,7 +3358,7 @@ bool fedhas_check_evolve_flora(bool quiet)
         return true;
     }
 
-    if (!_possible_evolution(plant, upgrade))
+    if (!_possible_evolution(monster_info(plant), upgrade))
     {
         if (plant->type == MONS_GIANT_SPORE)
             mpr("You can evolve only complete plants, not seeds.");
@@ -3028,7 +3410,7 @@ void fedhas_evolve_flora()
         return;
     }
 
-    ASSERT(_possible_evolution(plant, upgrade));
+    ASSERT(_possible_evolution(monster_info(plant), upgrade));
 
     switch (plant->type)
     {
@@ -3158,7 +3540,7 @@ void lugonu_bend_space()
     if (area_warp)
         _lugonu_warp_area(pow);
 
-    random_blink(false, true, true);
+    uncontrolled_blink(true);
 
     const int damage = roll_dice(1, 4);
     ouch(damage, KILLED_BY_WILD_MAGIC, MID_NOBODY, "a spatial distortion");
@@ -3267,12 +3649,13 @@ void cheibriados_temporal_distortion()
     }
     while (--you.duration[DUR_TIME_STEP] > 0);
 
-    monster* mon;
-    if (mon = monster_at(old_pos))
+    if (monster *mon = monster_at(old_pos))
     {
+        mon->props[FAKE_BLINK_KEY].get_bool() = true;
         mon->blink();
-        if (mon = monster_at(old_pos))
-            mon->teleport(true);
+        mon->props.erase(FAKE_BLINK_KEY);
+        if (monster *stubborn = monster_at(old_pos))
+            monster_teleport(stubborn, true, true);
     }
 
     you.moveto(old_pos);
@@ -3306,12 +3689,13 @@ void cheibriados_time_step(int pow) // pow is the number of turns to skip
     scaled_delay(1000);
 #endif
 
-    monster* mon;
-    if (mon = monster_at(old_pos))
+    if (monster *mon = monster_at(old_pos))
     {
+        mon->props[FAKE_BLINK_KEY].get_bool() = true;
         mon->blink();
-        if (mon = monster_at(old_pos))
-            mon->teleport(true);
+        mon->props.erase(FAKE_BLINK_KEY);
+        if (monster *stubborn = monster_at(old_pos))
+            monster_teleport(stubborn, true, true);
     }
 
     you.moveto(old_pos);
@@ -3711,7 +4095,7 @@ void dithmenos_shadow_throw(coord_def target, const item_def &item)
         new_item.flags    |= ISFLAG_SUMMONED;
         mon->inv[MSLOT_MISSILE] = ammo_index;
 
-        mon->target = target;
+        mon->target = clamp_in_bounds(target);
 
         bolt beem;
         beem.target = target;
@@ -3748,7 +4132,7 @@ void dithmenos_shadow_spell(bolt* orig_beam, spell_type spell)
                           min(3 * spell_difficulty(spell),
                               you.experience_level) / 2));
 
-    mon->target = target;
+    mon->target = clamp_in_bounds(target);
     if (actor_at(target))
         mon->foe = actor_at(target)->mindex();
 
@@ -3820,6 +4204,9 @@ static int _gozag_faith_adjusted_price(int price)
 
 int gozag_potion_price()
 {
+    if (!you.attribute[ATTR_GOZAG_FIRST_POTION])
+        return 0;
+
     int multiplier = GOZAG_POTION_BASE_MULTIPLIER
                      + you.attribute[ATTR_GOZAG_POTIONS];
     int price = multiplier * 15; // arbitrary
@@ -3861,6 +4248,10 @@ bool gozag_potion_petition()
                 prices[i] = 0;
                 int multiplier = GOZAG_POTION_BASE_MULTIPLIER
                                  + you.attribute[ATTR_GOZAG_POTIONS];
+
+                if (!you.attribute[ATTR_GOZAG_FIRST_POTION])
+                    multiplier = 0;
+
                 string key = make_stringf(GOZAG_POTIONS_KEY, i);
                 you.props.erase(key);
                 you.props[key].new_vector(SV_INT, SFLAG_CONST_TYPE);
@@ -3943,7 +4334,10 @@ bool gozag_potion_petition()
     for (auto pot : *pots[keyin])
         potionlike_effect(static_cast<potion_type>(pot.get_int()), 40);
 
-    you.attribute[ATTR_GOZAG_POTIONS]++;
+    if (!you.attribute[ATTR_GOZAG_FIRST_POTION])
+        you.attribute[ATTR_GOZAG_FIRST_POTION] = 1;
+    else
+        you.attribute[ATTR_GOZAG_POTIONS]++;
 
     for (int i = 0; i < GOZAG_MAX_POTIONS; i++)
     {
@@ -3977,7 +4371,8 @@ static int _gozag_max_shops()
 int gozag_price_for_shop(bool max)
 {
     // This value probably needs tweaking.
-    const int base = max ? 1000 : random_range(500, 1000);
+    const int max_base = 800;
+    const int base = max ? max_base : random_range(max_base/2, max_base);
     const int price = base
                       * (GOZAG_SHOP_BASE_MULTIPLIER
                          + GOZAG_SHOP_MOD_MULTIPLIER
@@ -4140,7 +4535,7 @@ static void _setup_gozag_shop(int index, vector<shop_type> &valid_shops)
                                       : "";
 
     you.props[make_stringf(GOZAG_SHOP_COST_KEY, index)].get_int()
-                                    = gozag_price_for_shop();
+        = gozag_price_for_shop();
 }
 
 /**
@@ -4493,7 +4888,7 @@ bribability mons_bribability[] =
     { MONS_SHADOW_FIEND,    BRANCH_TARTARUS, 5 },
 };
 
-// An x-in-16 chance of a monster of the given type being bribed.
+// An x-in-8 chance of a monster of the given type being bribed.
 // Tougher monsters have a stronger chance of being bribed.
 int gozag_type_bribable(monster_type type, bool force)
 {
@@ -5094,6 +5489,21 @@ static mutation_type _random_valid_sacrifice(const vector<mutation_type> &muts)
         if (mut_check_conflict(mut, true))
             continue;
 
+        // special case a few weird interactions
+        // vampires can't get slow healing for some reason related to their
+        // existing regen silliness
+        if (you.species == SP_VAMPIRE && mut == MUT_SLOW_HEALING)
+            continue;
+
+        // demonspawn can't get frail if they have a robust facet
+        if (you.species == SP_DEMONSPAWN && mut == MUT_FRAIL
+            && any_of(begin(you.demonic_traits), end(you.demonic_traits),
+                      [] (player::demon_trait t)
+                      { return t.mutation == MUT_ROBUST; }))
+        {
+            continue;
+        }
+
         // The Grunt Algorithm
         // (choose a random element from a set of unknown size without building
         // an explicit list, by giving each one a chance to be chosen equal to
@@ -5231,8 +5641,24 @@ static const char* _arcane_mutation_to_school_name(mutation_type mutation)
 {
     // XXX: this does a really silly dance back and forth between school &
     // spelltype.
-    const int school = skill2spell_type(arcane_mutation_to_skill(mutation));
+    const skill_type sk = arcane_mutation_to_skill(mutation);
+    const spschool_flag_type school = skill2spell_type(sk);
     return spelltype_long_name(school);
+}
+
+/**
+ * What's the abbreviation of the spell school corresponding to the given Ru
+ * mutation?
+ *
+ * @param mutation  The variety of MUT_NO_*_MAGIC in question.
+ * @return          A school abbreviation ("Summ", "Tloc", etc.)
+ */
+static const char* _arcane_mutation_to_school_abbr(mutation_type mutation)
+{
+    // XXX: this does a really silly dance back and forth between school &
+    // spelltype.
+    const auto school = skill2spell_type(arcane_mutation_to_skill(mutation));
+    return spelltype_short_name(school);
 }
 
 static int _piety_for_skill(skill_type skill)
@@ -5241,6 +5667,26 @@ static int _piety_for_skill(skill_type skill)
 }
 
 #define AS_MUT(csv) (static_cast<mutation_type>((csv).get_int()))
+
+/**
+ * Adjust piety based on stat ranking. You get less piety if you're looking at
+ * your lower stats.
+ *
+ * @param stat_type input_stat The stat we're checking.
+ * @param int       multiplier How much piety for each rank position off.
+ * @return          The piety to add.
+ */
+static int _get_stat_piety(stat_type input_stat, int multiplier)
+{
+    int stat_val = 3; // If this is your highest stat.
+    if (you.base_stats[STAT_INT] > you.base_stats[input_stat])
+            stat_val -= 1;
+    if (you.base_stats[STAT_STR] > you.base_stats[input_stat])
+            stat_val -= 1;
+    if (you.base_stats[STAT_DEX] > you.base_stats[input_stat])
+            stat_val -= 1;
+    return stat_val * multiplier;
+}
 
 static int _get_sacrifice_piety(ability_type sac)
 {
@@ -5252,12 +5698,8 @@ static int _get_sacrifice_piety(ability_type sac)
     ability_type sacrifice = sac_def.sacrifice;
     mutation_type mut = MUT_NON_MUTATION;
     int num_sacrifices = 0;
-    const int piety_for_lost_muts = 15;
-    const int piety_for_lost_stat_muts = 6;
-
 
     // Initialize data
-
     if (sac_def.sacrifice_vector)
     {
         ASSERT(you.props.exists(sac_def.sacrifice_vector));
@@ -5292,29 +5734,33 @@ static int _get_sacrifice_piety(ability_type sac)
     {
         case ABIL_RU_SACRIFICE_ESSENCE:
             if (mut == MUT_LOW_MAGIC)
-                piety_gain += 12;
+            {
+                piety_gain += 10 + max(you.skill_rdiv(SK_INVOCATIONS, 1, 2),
+                                       max( you.skill_rdiv(SK_SPELLCASTING, 1, 2),
+                                            you.skill_rdiv(SK_EVOCATIONS, 1, 2)));
+            }
             else if (mut == MUT_MAGICAL_VULNERABILITY)
                 piety_gain += 28;
             else
-                piety_gain += 16;
+                piety_gain += 2 + _get_stat_piety(STAT_INT, 6);
             break;
         case ABIL_RU_SACRIFICE_PURITY:
-            if (mut == MUT_WEAK
-                || mut == MUT_CLUMSY
-                || mut == MUT_DOPEY)
+            if (mut == MUT_WEAK || mut == MUT_DOPEY || mut == MUT_CLUMSY)
             {
-                if (player_mutation_level(MUT_STRONG) && mut == MUT_WEAK)
-                piety_gain += 8;
+                const stat_type stat = mut == MUT_WEAK   ? STAT_STR
+                                     : mut == MUT_CLUMSY ? STAT_DEX
+                                     : mut == MUT_DOPEY  ? STAT_INT
+                                                         : NUM_STATS;
+                piety_gain += 4 + _get_stat_piety(stat, 4);
             }
             // the other sacrifices get sharply worse if you already
             // have levels of them.
             else if (player_mutation_level(mut) == 2)
                 piety_gain += 28;
             else if (player_mutation_level(mut) == 1)
-                piety_gain += 20;
+                piety_gain += 21;
             else
-                piety_gain += 12;
-
+                piety_gain += 14;
             break;
         case ABIL_RU_SACRIFICE_ARTIFICE:
             if (player_mutation_level(MUT_NO_LOVE))
@@ -5357,12 +5803,7 @@ static int _get_sacrifice_piety(ability_type sac)
         || sacrifice == ABIL_RU_SACRIFICE_HEALTH
         || sacrifice == ABIL_RU_SACRIFICE_ESSENCE)
     {
-        int existing_mut_val = 0;
-        if (mut == MUT_STRONG || mut == MUT_CLEVER || mut == MUT_AGILE)
-            existing_mut_val = piety_for_lost_stat_muts;
-        else
-            existing_mut_val = piety_for_lost_muts;
-        piety_gain += existing_mut_val * mut_check_conflict(mut);
+        piety_gain *= 1 + mut_check_conflict(mut);
     }
 
     return piety_gain;
@@ -5422,6 +5863,42 @@ static ability_type _random_cheap_sacrifice(
 }
 
 /**
+ * Choose the cheapest remaining sacrifice. This is used when the cheapest
+ * remaining sacrifice is over the piety cap and we still need to fill out 3
+ * options.
+ *
+ * @param possible_sacrifices   The list of sacrifices to choose from.
+ * @return                      The ability_type of the cheapest remaining
+ *                              sacrifice.
+ */
+static ability_type _get_cheapest_sacrifice(
+        const vector<ability_type> &possible_sacrifices)
+{
+    // XXX: replace this with random_if when that's merged
+    ability_type chosen_sacrifice = ABIL_RU_REJECT_SACRIFICES;
+    int last_piety = 999;
+    int cheapest_sacrifices = 0;
+    for (auto sacrifice : possible_sacrifices)
+    {
+        int sac_piety = _get_sacrifice_piety(sacrifice);
+        if (sac_piety >= last_piety)
+            continue;
+
+        ++cheapest_sacrifices;
+        if (one_chance_in(cheapest_sacrifices))
+        {
+            chosen_sacrifice = sacrifice;
+            last_piety = sac_piety;
+        }
+    }
+
+    dprf("found %d cheapest sacrifices; chose %d",
+         cheapest_sacrifices, chosen_sacrifice);
+
+    return chosen_sacrifice;
+}
+
+/**
  * Chooses three distinct sacrifices to offer the player, store them in
  * available_sacrifices, and print a message to the player letting them
  * know that their new sacrifices are ready.
@@ -5459,18 +5936,32 @@ void ru_offer_new_sacrifices()
                          });
 
         const int piety_cap
-            = max(170, you.piety + _get_sacrifice_piety(min_piety_sacrifice));
+            = max(179, you.piety + _get_sacrifice_piety(min_piety_sacrifice));
 
         dprf("cheapest sac %d (%d piety); cap %d",
              min_piety_sacrifice, _get_sacrifice_piety(min_piety_sacrifice),
              piety_cap);
 
         // XXX: replace this with random_if when that's merged
-        const ability_type chosen_sacrifice
+        ability_type chosen_sacrifice
             = _random_cheap_sacrifice(possible_sacrifices, piety_cap);
 
-        ASSERT_RANGE(chosen_sacrifice,
-                     ABIL_FIRST_SACRIFICE, ABIL_FINAL_SACRIFICE+1);
+        if (chosen_sacrifice < ABIL_FIRST_SACRIFICE ||
+                chosen_sacrifice > ABIL_FINAL_SACRIFICE)
+        {
+           chosen_sacrifice = _get_cheapest_sacrifice(possible_sacrifices);
+        }
+
+        if (chosen_sacrifice > ABIL_FINAL_SACRIFICE)
+        {
+            // We don't have three sacrifices to offer for some reason.
+            // Either the player is messing around in wizmode or has rejoined
+            // Ru repeatedly. In either case, we'll just stop offering
+            // sacrifices rather than crashing.
+            _ru_expire_sacrifices();
+            ru_reset_sacrifice_timer(false);
+            return;
+        }
 
         // add it to the list of chosen sacrifices to offer, and remove it from
         // the list of possiblities for the later sacrifices
@@ -5521,7 +6012,10 @@ static bool _execute_sacrifice(int piety_gain, const char* message)
 static void _ru_kill_skill(skill_type skill)
 {
     change_skill_points(skill, -you.skill_points[skill], true);
-    you.stop_train.insert(skill);
+    //you.stop_train.insert(skill);
+    you.can_train.set(skill, false);
+    reset_training();
+    check_selected_skills();
 }
 
 static void _extra_sacrifice_code(ability_type sac)
@@ -5597,6 +6091,64 @@ static void _extra_sacrifice_code(ability_type sac)
             }
         }
     }
+    else if (sac_def.sacrifice == ABIL_RU_SACRIFICE_EXPERIENCE)
+        adjust_level(-RU_SAC_XP_LEVELS);
+    else if (sac_def.sacrifice == ABIL_RU_SACRIFICE_SKILL)
+    {
+        uint8_t saved_skills[NUM_SKILLS];
+        for (skill_type sk = SK_FIRST_SKILL; sk < NUM_SKILLS; ++sk)
+        {
+            saved_skills[sk] = you.skills[sk];
+            check_skill_level_change(sk, false);
+        }
+
+        // Produce messages about skill increases/decreases. We
+        // restore one skill level at a time so that at most the
+        // skill being checked is at the wrong level.
+        for (skill_type sk = SK_FIRST_SKILL; sk < NUM_SKILLS; ++sk)
+        {
+            you.skills[sk] = saved_skills[sk];
+            check_skill_level_change(sk);
+        }
+
+        redraw_screen();
+    }
+}
+
+/**
+ * Describe variable costs for a given Ru sacrifice being offered.
+ *
+ * @param sac       The sacrifice in question.
+ * @return          Extra costs.
+ *                  For ABIL_RU_SACRIFICE_ARCANA: e.g. " (Tloc/Air/Fire)"
+ *                  For other variable muts: e.g. " (frail)"
+ *                  Otherwise, "".
+ */
+string ru_sac_text(ability_type sac)
+{
+    const sacrifice_def &sac_def = _get_sacrifice_def(sac);
+    if (!sac_def.sacrifice_vector)
+        return "";
+
+    ASSERT(you.props.exists(sac_def.sacrifice_vector));
+    const CrawlVector &sacrifice_muts =
+        you.props[sac_def.sacrifice_vector].get_vector();
+
+    if (sac != ABIL_RU_SACRIFICE_ARCANA)
+    {
+        ASSERT(sacrifice_muts.size() == 1);
+        const mutation_type mut = AS_MUT(sacrifice_muts[0]);
+        return make_stringf(" (%s)", mutation_name(mut));
+    }
+
+    // "Tloc/Fire/Ice"
+    const string school_names
+        = comma_separated_fn(sacrifice_muts.begin(), sacrifice_muts.end(),
+                [](CrawlStoreValue mut) {
+                    return _arcane_mutation_to_school_abbr(AS_MUT(mut));
+                }, "/", "/");
+
+    return make_stringf(" (%s)", school_names.c_str());
 }
 
 bool ru_do_sacrifice(ability_type sac)
@@ -5733,9 +6285,10 @@ bool ru_do_sacrifice(ability_type sac)
     return true;
 }
 
-bool ru_reject_sacrifices()
+bool ru_reject_sacrifices(bool skip_prompt)
 {
-    if (!yesno("Do you really want to reject the sacrifices Ru is offering?",
+    if (!skip_prompt &&
+        !yesno("Do you really want to reject the sacrifices Ru is offering?",
                false, 'n'))
     {
         canned_msg(MSG_OK);
@@ -5791,34 +6344,34 @@ void ru_do_retribution(monster* mons, int damage)
         + damage - (2 * mons->get_hit_dice()));
     const actor* act = &you;
 
-    if (power > 50 && (mons->has_spells() || mons->is_actual_spellcaster()))
+    if (power > 50 && (mons->antimagic_susceptible()))
     {
-        simple_monster_message(mons, " is muted in retribution by your will!",
-            MSGCH_GOD);
-        mons->add_ench(mon_enchant(ENCH_MUTE, 1, act, power+random2(120)));
+        mprf(MSGCH_GOD, "You focus your will and drain %s's magic in "
+                "retribution!", mons->name(DESC_THE).c_str());
+        mons->add_ench(mon_enchant(ENCH_ANTIMAGIC, 1, act, power+random2(320)));
     }
     else if (power > 35)
     {
-        simple_monster_message(mons, " is paralysed in retribution by your will!",
-            MSGCH_GOD);
+        mprf(MSGCH_GOD, "You focus your will and paralyse %s in retribution!",
+                mons->name(DESC_THE).c_str());
         mons->add_ench(mon_enchant(ENCH_PARALYSIS, 1, act, power+random2(60)));
     }
     else if (power > 25)
     {
-        simple_monster_message(mons, " is slowed in retribution by your will!",
-            MSGCH_GOD);
+        mprf(MSGCH_GOD, "You focus your will and slow %s in retribution!",
+                mons->name(DESC_THE).c_str());
         mons->add_ench(mon_enchant(ENCH_SLOW, 1, act, power+random2(100)));
     }
     else if (power > 10 && mons_can_be_blinded(mons->type))
     {
-        simple_monster_message(mons, " is blinded in retribution by your will!",
-            MSGCH_GOD);
+        mprf(MSGCH_GOD, "You focus your will and blind %s in retribution!",
+                mons->name(DESC_THE).c_str());
         mons->add_ench(mon_enchant(ENCH_BLIND, 1, act, power+random2(100)));
     }
     else if (power > 0)
     {
-        simple_monster_message(mons, " is illuminated in retribution by your will!",
-            MSGCH_GOD);
+        mprf(MSGCH_GOD, "You focus your will and illuminate %s in retribution!",
+                mons->name(DESC_THE).c_str());
         mons->add_ench(mon_enchant(ENCH_CORONA, 1, act, power+random2(150)));
     }
 }
@@ -6034,15 +6587,15 @@ static int _apply_apocalypse(coord_def where, int pow, int dummy, actor* agent)
     switch (effect)
     {
         case 0:
-            if (mons->has_spells() || mons->is_actual_spellcaster())
+            if (mons->antimagic_susceptible())
             {
-                message = " is rendered silent by the truth!";
-                enchantment = ENCH_MUTE;
-                duration = 120 + random2(160);
+                message = " loses " + mons->pronoun(PRONOUN_POSSESSIVE)
+                          + " magic into the devouring truth!";
+                enchantment = ENCH_ANTIMAGIC;
+                duration = 500 + random2(200);
                 dmg += roll_dice(die_size, 4);
                 break;
-            } // if not a spellcaster, fall through to paralysis.
-
+            } // if not antimagicable, fall through to paralysis.
         case 1:
             message = " is paralysed by terrible understanding!";
             enchantment = ENCH_PARALYSIS;
@@ -6085,6 +6638,6 @@ bool ru_apocalypse()
     mpr("You reveal the great annihilating truth to your foes!");
     noisy(30, you.pos());
     apply_area_visible(_apply_apocalypse, you.piety, &you);
-    drain_player(100,false, true);
+    drain_player(100, false, true);
     return true;
 }

@@ -42,6 +42,7 @@
 #include "stringutil.h"
 #include "teleport.h"
 #include "terrain.h"
+#include "timed_effects.h"
 #include "traps.h"
 #include "view.h"
 #include "xom.h"
@@ -137,9 +138,22 @@ bool monster::add_ench(const mon_enchant &ench)
         invalidate_agrid();
     }
 
+    // If we have never changed shape, mark us as shapeshifter, so that
+    // "goblin perm_ench:shapeshifter" reverts on death.
+    if (ench.ench == ENCH_SHAPESHIFTER)
+    {
+        if (!props.exists(ORIGINAL_TYPE_KEY))
+            props[ORIGINAL_TYPE_KEY].get_int() = MONS_SHAPESHIFTER;
+    }
+    else if (ench.ench == ENCH_GLOWING_SHAPESHIFTER)
+    {
+        if (!props.exists(ORIGINAL_TYPE_KEY))
+            props[ORIGINAL_TYPE_KEY].get_int() = MONS_GLOWING_SHAPESHIFTER;
+    }
+
     bool new_enchantment = false;
-    mon_enchant *added = nullptr;
-    if (added = map_find(enchantments, ench.ench))
+    mon_enchant *added = map_find(enchantments, ench.ench);
+    if (added)
         *added += ench;
     else
     {
@@ -492,19 +506,23 @@ void monster::remove_enchantment_effect(const mon_enchant &me, bool quiet)
 
     case ENCH_SWIFT:
         if (!quiet)
+        {
             if (type == MONS_ALLIGATOR)
                 simple_monster_message(this, " slows down.");
             else
                 simple_monster_message(this, " is no longer moving somewhat quickly.");
+        }
         break;
 
     case ENCH_SILENCE:
         invalidate_agrid();
         if (!quiet && !silenced(pos()))
+        {
             if (alive())
                 simple_monster_message(this, " becomes audible again.");
             else
                 mprf("As %s dies, the sound returns.", name(DESC_THE).c_str());
+        }
         break;
 
     case ENCH_MIGHT:
@@ -557,23 +575,26 @@ void monster::remove_enchantment_effect(const mon_enchant &me, bool quiet)
         break;
 
     case ENCH_FEAR:
+    {
+        string msg;
         if (holiness() == MH_NONLIVING || berserk_or_insane())
         {
             // This should only happen because of fleeing sanctuary
-            snprintf(info, INFO_SIZE, " stops retreating.");
+            msg = " stops retreating.";
         }
         else if (!mons_is_tentacle_or_tentacle_segment(type))
         {
-            snprintf(info, INFO_SIZE, " seems to regain %s courage.",
-                     pronoun(PRONOUN_POSSESSIVE, true).c_str());
+            msg = " seems to regain " + pronoun(PRONOUN_POSSESSIVE, true)
+                                      + " courage.";
         }
 
         if (!quiet)
-            simple_monster_message(this, info);
+            simple_monster_message(this, msg.c_str());
 
         // Reevaluate behaviour.
         behaviour_event(this, ME_EVAL);
         break;
+    }
 
     case ENCH_CONFUSION:
         if (!quiet)
@@ -903,9 +924,10 @@ void monster::remove_enchantment_effect(const mon_enchant &me, bool quiet)
     case ENCH_WRETCHED:
         if (!quiet)
         {
-            snprintf(info, INFO_SIZE, " seems to return to %s normal shape.",
-                     pronoun(PRONOUN_POSSESSIVE, true).c_str());
-            simple_monster_message(this, info);
+            const string msg = "seems to return to " +
+                               pronoun(PRONOUN_POSSESSIVE, true) +
+                               " normal shape.";
+            simple_monster_message(this, msg.c_str());
         }
         break;
 
@@ -1039,14 +1061,6 @@ void monster::remove_enchantment_effect(const mon_enchant &me, bool quiet)
             simple_monster_message(this, " is no longer deflecting missiles.");
         break;
 
-    case ENCH_NEGATIVE_VULN:
-        if (!quiet)
-        {
-            simple_monster_message(this, " is no longer more vulnerable to "
-                                         "negative energy.");
-        }
-        break;
-
     case ENCH_CONDENSATION_SHIELD:
         if (!quiet && you.can_see(this))
         {
@@ -1103,148 +1117,6 @@ bool monster::lose_ench_duration(const mon_enchant &e, int dur)
         newe.duration -= dur;
         update_ench(newe);
         return false;
-    }
-}
-
-//---------------------------------------------------------------
-//
-// timeout_enchantments
-//
-// Update a monster's enchantments when the player returns
-// to the level.
-//
-// Management for enchantments... problems with this are the oddities
-// (monster dying from poison several thousands of turns later), and
-// game balance.
-//
-// Consider: Poison/Sticky Flame a monster at range and leave, monster
-// dies but can't leave level to get to player (implied game balance of
-// the delayed damage is that the monster could be a danger before
-// it dies).  This could be fixed by keeping some monsters active
-// off level and allowing them to take stairs (a very serious change).
-//
-// Compare this to the current abuse where the player gets
-// effectively extended duration of these effects (although only
-// the actual effects only occur on level, the player can leave
-// and heal up without having the effect disappear).
-//
-// This is a simple compromise between the two... the enchantments
-// go away, but the effects don't happen off level.  -- bwr
-//
-//---------------------------------------------------------------
-void monster::timeout_enchantments(int levels)
-{
-    if (enchantments.empty())
-        return;
-
-    const mon_enchant_list ec = enchantments;
-    for (auto &entry : ec)
-    {
-        switch (entry.first)
-        {
-        case ENCH_WITHDRAWN:
-            if (hit_points >= (max_hit_points - max_hit_points / 4)
-                && !one_chance_in(3))
-            {
-                del_ench(entry.first);
-                break;
-            }
-            lose_ench_levels(entry.second, levels);
-            break;
-
-        case ENCH_POISON: case ENCH_ROT: case ENCH_CORONA:
-        case ENCH_STICKY_FLAME: case ENCH_ABJ: case ENCH_SHORT_LIVED:
-        case ENCH_HASTE: case ENCH_MIGHT: case ENCH_FEAR:
-        case ENCH_CHARM: case ENCH_SLEEP_WARY: case ENCH_SICK:
-        case ENCH_PARALYSIS: case ENCH_PETRIFYING:
-        case ENCH_PETRIFIED: case ENCH_SWIFT: case ENCH_BATTLE_FRENZY:
-        case ENCH_SILENCE: case ENCH_LOWERED_MR:
-        case ENCH_SOUL_RIPE: case ENCH_BLEED: case ENCH_ANTIMAGIC:
-        case ENCH_FEAR_INSPIRING: case ENCH_REGENERATION: case ENCH_RAISED_MR:
-        case ENCH_MIRROR_DAMAGE: case ENCH_STONESKIN: case ENCH_LIQUEFYING:
-        case ENCH_SILVER_CORONA: case ENCH_DAZED: case ENCH_FAKE_ABJURATION:
-        case ENCH_ROUSED: case ENCH_BREATH_WEAPON: case ENCH_DEATHS_DOOR:
-        case ENCH_WRETCHED: case ENCH_SCREAMED:
-        case ENCH_BLIND: case ENCH_WORD_OF_RECALL: case ENCH_INJURY_BOND:
-        case ENCH_FLAYED: case ENCH_BARBS:
-        case ENCH_AGILE: case ENCH_FROZEN: case ENCH_EPHEMERAL_INFUSION:
-        case ENCH_BLACK_MARK: case ENCH_SAP_MAGIC: case ENCH_NEUTRAL_BRIBED:
-        case ENCH_FRIENDLY_BRIBED: case ENCH_CORROSION: case ENCH_GOLD_LUST:
-        case ENCH_RESISTANCE: case ENCH_HEXED:
-            lose_ench_levels(entry.second, levels);
-            break;
-
-        case ENCH_SLOW:
-            if (torpor_slowed())
-            {
-                lose_ench_levels(entry.second,
-                                 min(levels, entry.second.degree - 1));
-            }
-            else
-            {
-                lose_ench_levels(entry.second, levels);
-                if (props.exists(TORPOR_SLOWED_KEY))
-                    props.erase(TORPOR_SLOWED_KEY);
-            }
-            break;
-
-        case ENCH_INVIS:
-            if (!mons_class_flag(type, M_INVIS))
-                lose_ench_levels(entry.second, levels);
-            break;
-
-        case ENCH_INSANE:
-        case ENCH_BERSERK:
-        case ENCH_INNER_FLAME:
-        case ENCH_ROLLING:
-        case ENCH_MERFOLK_AVATAR_SONG:
-            del_ench(entry.first);
-            break;
-
-        case ENCH_FATIGUE:
-            del_ench(entry.first);
-            del_ench(ENCH_SLOW);
-            break;
-
-        case ENCH_TP:
-            teleport(true);
-            del_ench(entry.first);
-            break;
-
-        case ENCH_CONFUSION:
-            if (!mons_class_flag(type, M_CONFUSED))
-                del_ench(entry.first);
-            // That triggered a behaviour_event, which could have made a
-            // pacified monster leave the level.
-            if (alive() && !is_stationary())
-                monster_blink(this, true);
-            break;
-
-        case ENCH_HELD:
-            del_ench(entry.first);
-            break;
-
-        case ENCH_TIDE:
-        {
-            const int actdur = speed_to_duration(speed) * levels;
-            lose_ench_duration(entry.first, actdur);
-            break;
-        }
-
-        case ENCH_SLOWLY_DYING:
-        {
-            const int actdur = speed_to_duration(speed) * levels;
-            if (lose_ench_duration(entry.first, actdur))
-                monster_die(this, KILL_MISC, NON_MONSTER, true);
-            break;
-        }
-
-        default:
-            break;
-        }
-
-        if (!alive())
-            break;
     }
 }
 
@@ -1668,7 +1540,6 @@ void monster::apply_enchantment(const mon_enchant &me)
     case ENCH_SAP_MAGIC:
     case ENCH_CORROSION:
     case ENCH_GOLD_LUST:
-    case ENCH_NEGATIVE_VULN:
     case ENCH_RESISTANCE:
     case ENCH_HEXED:
         decay_enchantment(en);
@@ -1698,10 +1569,9 @@ void monster::apply_enchantment(const mon_enchant &me)
 
     case ENCH_AQUATIC_LAND:
         // Aquatic monsters lose hit points every turn they spend on dry land.
-        ASSERT(mons_habitat(this) == HT_WATER);
-        if (feat_is_watery(grd(pos())))
+        ASSERT(mons_habitat(this) == HT_WATER || mons_habitat(this) == HT_LAVA);
+        if (monster_habitable_grid(this, grd(pos())))
         {
-            // The tide, water card or Fedhas gave us water.
             del_ench(ENCH_AQUATIC_LAND);
             break;
         }
@@ -2414,7 +2284,11 @@ static const char *enchant_names[] =
     "frozen", "ephemeral_infusion", "black_mark", "grand_avatar",
     "sap magic", "shroud", "phantom_mirror", "bribed", "permabribed",
     "corrosion", "gold_lust", "drained", "repel missiles",
-    "deflect missiles", "negative_vuln", "condensation_shield", "resistant",
+    "deflect missiles",
+#if TAG_MAJOR_VERSION == 34
+    "negative_vuln",
+#endif
+    "condensation_shield", "resistant",
     "hexed", "corpse_armour", "buggy",
 };
 

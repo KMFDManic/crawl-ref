@@ -26,7 +26,6 @@
 #include "delay.h"
 #include "dgn-overview.h"
 #include "directn.h"
-#include "effects.h"
 #include "english.h"
 #include "env.h"
 #include "exclude.h"
@@ -39,11 +38,13 @@
 #include "godwrath.h"
 #include "hints.h"
 #include "libutil.h"
+#include "macro.h"
 #include "message.h"
 #include "misc.h"
 #include "mon-behv.h"
 #include "mon-death.h"
 #include "mon-poly.h"
+#include "mon-tentacle.h"
 #include "mon-util.h"
 #include "notes.h"
 #include "options.h"
@@ -121,7 +122,7 @@ void flush_comes_into_view()
     handle_seen_interrupt(mon);
 }
 
-void seen_monsters_react()
+void seen_monsters_react(int stealth)
 {
     if (you.duration[DUR_TIME_STEP] || crawl_state.game_is_arena())
         return;
@@ -129,10 +130,10 @@ void seen_monsters_react()
     for (monster_near_iterator mi(you.pos()); mi; ++mi)
     {
         if ((mi->asleep() || mons_is_wandering(*mi))
-            && check_awaken(*mi)
+            && check_awaken(*mi, stealth)
 #ifdef EUCLIDEAN
                || you.prev_move.abs() == 2 && x_chance_in_y(2, 5)
-                  && check_awaken(*mi)
+                  && check_awaken(*mi, stealth)
 #endif
            )
         {
@@ -390,12 +391,17 @@ void update_monsters_in_view()
             vector<monster *> mons;
             for (monster *mon : monsters)
             {
-                if (mon->wont_attack())
+                if (mon->wont_attack()
+                    || mon->is_stationary()
+                    || mons_is_object(mon->type)
+                    || mons_is_tentacle_or_tentacle_segment(mon->type))
+                {
                     continue;
+                }
 
-                int bribability = gozag_type_bribable(mon->type, true);
-                if (bribability
-                    && x_chance_in_y(bribability, GOZAG_MAX_BRIBABILITY))
+                if (coinflip()
+                    && mon->get_experience_level() >=
+                       random2(you.experience_level))
                 {
                     mon_count.add(mon);
                     mons.push_back(mon);
@@ -410,8 +416,6 @@ void update_monsters_in_view()
                 mprf(MSGCH_GOD, GOD_GOZAG, "%s", msg.c_str());
                 for (monster *mon : mons)
                     gozag_incite(mon);
-
-                dec_penance(GOD_GOZAG, mons.size());
             }
         }
     }
@@ -483,8 +487,8 @@ static const FixedArray<uint8_t, GXM, GYM>& _tile_difficulties(bool random)
     }
 
     // must not produce the magic value (-1)
-    int seed = (static_cast<int>(you.where_are_you) << 8) + you.depth
-             ^ you.game_seeds[SEED_PASSIVE_MAP] & 0x7fffffff;
+    int seed = ((static_cast<int>(you.where_are_you) << 8) + you.depth)
+             ^ (you.game_seeds[SEED_PASSIVE_MAP] & 0x7fffffff);
 
     if (seed == cache_seed)
         return cache;
@@ -550,8 +554,19 @@ bool magic_mapping(int map_radius, int proportion, bool suppress_msg,
 
         if (env.map_knowledge(*ri).changed())
         {
-            env.map_knowledge(*ri).clear();
-            env.map_seen.set(*ri, false);
+            // If the player has already seen the square, update map
+            // knowledge with the new terrain. Otherwise clear what we had
+            // before.
+            if (env.map_knowledge(*ri).seen())
+            {
+                dungeon_feature_type newfeat = grd(*ri);
+                if (newfeat == DNGN_UNDISCOVERED_TRAP)
+                    newfeat = DNGN_FLOOR;
+                trap_type tr = feat_is_trap(newfeat) ? get_trap_type(*ri) : TRAP_UNASSIGNED;
+                env.map_knowledge(*ri).set_feature(newfeat, env.grid_colours(*ri), tr);
+            }
+            else
+                env.map_knowledge(*ri).clear();
         }
 
         if (!wizard_map && (env.map_knowledge(*ri).seen() || env.map_knowledge(*ri).mapped()))
@@ -753,8 +768,6 @@ int viewmap_flash_colour()
 {
     if (_show_terrain)
         return BLACK;
-    else if (you.attribute[ATTR_SHADOWS])
-        return LIGHTGREY;
     else if (you.berserk())
         return RED;
 
@@ -943,8 +956,8 @@ static int player_view_update_at(const coord_def &gc)
         env.pgrid(gc) |= FPROP_SEEN_OR_NOEXP;
         if (!crawl_state.game_is_arena())
         {
+            did_god_conduct(DID_EXPLORATION, 2500);
             const int density = env.density ? env.density : 2000;
-            did_god_conduct(DID_EXPLORATION, density);
             you.exploration += div_rand_round(1<<16, density);
         }
     }
@@ -1456,13 +1469,29 @@ void draw_cell(screen_cell_t *cell, const coord_def &gc,
 
     tile_apply_properties(gc, cell->tile);
 #endif
+#ifndef USE_TILE_LOCAL
+    if ((_show_terrain || Options.always_show_exclusions)
+        && you.on_current_level
+        && map_bounds(gc)
+        && (_show_terrain || gc != you.pos())
+        && travel_colour_override(gc))
+    {
+        if (is_exclude_root(gc))
+            cell->colour = Options.tc_excluded;
+        else if (is_excluded(gc))
+            cell->colour = Options.tc_exclude_circle;
+    }
+#endif
 }
 
 void toggle_show_terrain()
 {
     _show_terrain = !_show_terrain;
     if (_show_terrain)
-        mpr("Showing terrain only.");
+    {
+        mprf("Showing terrain only. Press <w>%s</w> to return to normal view.",
+             command_to_string(CMD_SHOW_TERRAIN).c_str());
+    }
     else
         mpr("Returning to normal view.");
 }

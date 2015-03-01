@@ -27,7 +27,6 @@
 #include "delay.h"
 #include "directn.h"
 #include "dungeon.h"
-#include "effects.h"
 #include "english.h"
 #include "exercise.h"
 #include "fight.h"
@@ -864,16 +863,13 @@ void bolt::burn_wall_effect()
     }
     else if (whose_kill() == KC_FRIENDLY && !crawl_state.game_is_arena())
         did_god_conduct(DID_KILL_PLANT, 1, god_cares());
-    ASSERT(agent());
 
-    // Trees do not burn so readily in a wet environment, and you shouldn't get
-    // tons of penance from an unid'd wand of fire.
-    if (player_in_branch(BRANCH_SWAMP) || in_good_standing(GOD_DITHMENOS))
+    // Trees do not burn so readily in a wet environment.
+    if (player_in_branch(BRANCH_SWAMP))
         place_cloud(CLOUD_FIRE, pos(), random2(12)+5, agent());
     else
         place_cloud(CLOUD_FOREST_FIRE, pos(), random2(30)+25, agent());
     obvious_effect = true;
-
 
     finish_beam();
 }
@@ -2087,14 +2083,46 @@ bool napalm_monster(monster* mons, const actor *who, int levels, bool verbose)
     return new_flame.degree > old_flame.degree;
 }
 
+static bool _curare_hits_player(actor* agent, int levels, string name,
+                                string source_name)
+{
+    ASSERT(!crawl_state.game_is_arena());
+
+    if (player_res_poison() >= 3
+        || player_res_poison() > 0 && !one_chance_in(3))
+    {
+        return false;
+    }
+
+    poison_player(roll_dice(levels, 12) + 1, source_name, name);
+
+    int hurted = 0;
+
+    if (!you.res_asphyx())
+    {
+        hurted = roll_dice(levels, 6);
+
+        if (hurted)
+        {
+            you.increase_duration(DUR_BREATH_WEAPON, hurted,
+                                  10*levels + random2(10*levels));
+            mpr("You have difficulty breathing.");
+            ouch(hurted, KILLED_BY_CURARE, agent->mid,
+                 "curare-induced apnoea");
+        }
+    }
+
+    slow_player(10 + random2(levels + random2(3 * levels)));
+
+    return hurted > 0;
+}
+
+
 bool curare_actor(actor* source, actor* target, int levels, string name,
                   string source_name)
 {
     if (target->is_player())
-    {
-        return curare_hits_player(actor_to_death_source(source), levels, name,
-                                  source_name);
-    }
+        return _curare_hits_player(source, levels, name, source_name);
     else
         return _curare_hits_monster(source, target->as_monster(), levels);
 }
@@ -2241,45 +2269,45 @@ bool imb_can_splash(coord_def origin, coord_def center,
     return true;
 }
 
-void bolt_parent_init(bolt *parent, bolt *child)
+void bolt_parent_init(const bolt &parent, bolt &child)
 {
-    child->name           = parent->name;
-    child->short_name     = parent->short_name;
-    child->aux_source     = parent->aux_source;
-    child->source_id      = parent->source_id;
-    child->origin_spell   = parent->origin_spell;
-    child->glyph          = parent->glyph;
-    child->colour         = parent->colour;
+    child.name           = parent.name;
+    child.short_name     = parent.short_name;
+    child.aux_source     = parent.aux_source;
+    child.source_id      = parent.source_id;
+    child.origin_spell   = parent.origin_spell;
+    child.glyph          = parent.glyph;
+    child.colour         = parent.colour;
 
-    child->flavour        = parent->flavour;
-    child->origin_spell   = parent->origin_spell;
+    child.flavour        = parent.flavour;
+    child.origin_spell   = parent.origin_spell;
 
     // We don't copy target since that is often overriden.
-    child->thrower        = parent->thrower;
-    child->source         = parent->source;
-    child->source_name    = parent->source_name;
-    child->attitude       = parent->attitude;
+    child.thrower        = parent.thrower;
+    child.source         = parent.source;
+    child.source_name    = parent.source_name;
+    child.attitude       = parent.attitude;
 
-    child->pierce         = parent->pierce ;
-    child->is_explosion   = parent->is_explosion;
-    child->ex_size        = parent->ex_size;
-    child->foe_ratio      = parent->foe_ratio;
+    child.pierce         = parent.pierce ;
+    child.is_explosion   = parent.is_explosion;
+    child.ex_size        = parent.ex_size;
+    child.foe_ratio      = parent.foe_ratio;
 
-    child->is_tracer      = parent->is_tracer;
-    child->is_targeting   = parent->is_targeting;
+    child.is_tracer      = parent.is_tracer;
+    child.is_targeting   = parent.is_targeting;
 
-    child->range          = parent->range;
-    child->hit            = parent->hit;
-    child->damage         = parent->damage;
-    if (parent->ench_power != -1)
-        child->ench_power = parent->ench_power;
+    child.range          = parent.range;
+    child.hit            = parent.hit;
+    child.damage         = parent.damage;
+    if (parent.ench_power != -1)
+        child.ench_power = parent.ench_power;
 
-    child->friend_info.dont_stop = parent->friend_info.dont_stop;
-    child->foe_info.dont_stop    = parent->foe_info.dont_stop;
-    child->dont_stop_player      = parent->dont_stop_player;
+    child.friend_info.dont_stop = parent.friend_info.dont_stop;
+    child.foe_info.dont_stop    = parent.foe_info.dont_stop;
+    child.dont_stop_player      = parent.dont_stop_player;
 
 #ifdef DEBUG_DIAGNOSTICS
-    child->quiet_debug    = parent->quiet_debug;
+    child.quiet_debug    = parent.quiet_debug;
 #endif
 }
 
@@ -2295,7 +2323,7 @@ static void _maybe_imb_explosion(bolt *parent, coord_def center)
         return;
     bolt beam;
 
-    bolt_parent_init(parent, &beam);
+    bolt_parent_init(*parent, beam);
     beam.name           = "mystic blast";
     beam.aux_source     = "orb of energy";
     beam.range          = 3;
@@ -2379,7 +2407,7 @@ static void _explosive_bolt_explode(bolt *parent, coord_def pos)
 {
     bolt beam;
 
-    bolt_parent_init(parent, &beam);
+    bolt_parent_init(*parent, beam);
     beam.name         = "fiery explosion";
     beam.aux_source   = "explosive bolt";
     beam.damage       = dice_def(3, 9 + parent->ench_power / 6);
@@ -2569,7 +2597,7 @@ void bolt::affect_endpoint()
 
     if (origin_spell == SPELL_BLINKBOLT)
     {
-        if (agent()->alive())
+        if (agent() && agent()->alive())
         {
             for (vector<coord_def>::reverse_iterator citr = path_taken.rbegin();
                  citr != path_taken.rend(); ++citr)
@@ -2622,7 +2650,8 @@ void bolt::drop_object()
         {
             mprf("%s %s!",
                  item->name(DESC_THE).c_str(),
-                 summoned_poof_msg(agent()->as_monster(), *item).c_str());
+                 summoned_poof_msg(agent() ? agent()->as_monster() : nullptr,
+                                   *item).c_str());
         }
         item_was_destroyed(*item);
         return;
@@ -2685,9 +2714,6 @@ void bolt::affect_ground()
            && !actor_at(pos()))
         {
             beh_type beh = attitude_creation_behavior(attitude);
-
-            if (crawl_state.game_is_arena())
-                beh = coinflip() ? BEH_FRIENDLY : BEH_HOSTILE;
 
             const god_type god = agent() ? agent()->deity() : GOD_NO_GOD;
 
@@ -2843,10 +2869,7 @@ void bolt::affect_place_clouds()
         place_cloud(CLOUD_GHOSTLY_FLAME, p, random2(6) + 5, agent());
 
     if (origin_spell == SPELL_DEATH_RATTLE)
-        if (coinflip())
-            place_cloud(CLOUD_NEGATIVE_ENERGY, p, random2(4) + 4, agent());
-        else
-            place_cloud(CLOUD_MIASMA, p, random2(4) + 4, agent());
+        place_cloud(CLOUD_NEGATIVE_ENERGY, p, random2(4) + 4, agent());
 }
 
 void bolt::affect_place_explosion_clouds()
@@ -3507,7 +3530,7 @@ void bolt::affect_player_enchantment(bool resistible)
         break;
 
     case BEAM_BLINK:
-        random_blink(false);
+        uncontrolled_blink();
         obvious_effect = true;
         break;
 
@@ -4540,7 +4563,8 @@ void bolt::monster_post_hit(monster* mon, int dmg)
     if (origin_spell == SPELL_THROW_BARBS && dmg > 0
         && !(mon->is_insubstantial() || mons_genus(mon->type) == MONS_JELLY))
     {
-        mon->add_ench(mon_enchant(ENCH_BARBS, 1, agent(), random_range(5, 7) * 10));
+        mon->add_ench(mon_enchant(ENCH_BARBS, 1, agent(),
+                                  random_range(5, 7) * BASELINE_DELAY));
     }
 }
 
@@ -4640,7 +4664,7 @@ bool bolt::god_cares() const
 void bolt::hit_shield(actor* blocker) const
 {
     if (flavour == BEAM_ACID)
-        corrode_actor(blocker);
+        blocker->corrode_equipment();
     if (is_fiery() || flavour == BEAM_STEAM)
     {
         monster* mon = blocker->as_monster();
@@ -5341,7 +5365,8 @@ mon_resist_type bolt::apply_enchantment_to_monster(monster* mon)
 
         obvious_effect = true;
         const int duration = you.skill_rdiv(SK_INVOCATIONS, 3, 4) + 2;
-        mon->add_ench(mon_enchant(ENCH_SOUL_RIPE, 0, agent(), duration * 10));
+        mon->add_ench(mon_enchant(ENCH_SOUL_RIPE, 0, agent(),
+                                  duration * BASELINE_DELAY));
         simple_monster_message(mon, "'s soul is now ripe for the taking.");
         return MON_AFFECTED;
     }
@@ -5786,8 +5811,7 @@ int bolt::range_used_on_hit() const
 }
 
 // Takes a bolt and refines it for use in the explosion function.
-// Explosions which do not follow from beams (e.g., scrolls of
-// immolation) bypass this function.
+// Explosions which do not follow from beams bypass this function.
 void bolt::refine_for_explosion()
 {
     ASSERT(!special_explosion);
@@ -6282,42 +6306,8 @@ bool bolt::nice_to(const monster* mon) const
 
 ////////////////////////////////////////////////////////////////////////////
 // bolt
-
-// A constructor for bolt to help guarantee that we start clean (this has
-// caused way too many bugs).  Putting it here since there's no good place to
-// put it, and it doesn't do anything other than initialise its members.
-//
 // TODO: Eventually it'd be nice to have a proper factory for these things
 // (extended from setup_mons_cast() and zapping() which act as limited ones).
-bolt::bolt() : origin_spell(SPELL_NO_SPELL),
-               range(-2), glyph('*'), colour(BLACK), flavour(BEAM_MAGIC),
-               real_flavour(BEAM_MAGIC), drop_item(false), item(nullptr),
-               source(), target(), damage(0, 0), ench_power(0), hit(0),
-               thrower(KILL_MISC), ex_size(0), source_id(MID_NOBODY),
-               source_name(), name(), short_name(), hit_verb(),
-               loudness(0), noise_msg(), pierce(false), is_explosion(false),
-               aimed_at_spot(false), aux_source(),
-               affects_nothing(false), affects_items(true), effect_known(true),
-               effect_wanton(false),
-               draw_delay(15), explode_delay(50),
-               special_explosion(nullptr), was_missile(false),
-               animate(Options.use_animations & UA_BEAM),
-               ac_rule(AC_NORMAL),
-#ifdef DEBUG_DIAGNOSTICS
-               quiet_debug(false),
-#endif
-               obvious_effect(false), seen(false), heard(false),
-               path_taken(), extra_range_used(0), is_tracer(false),
-               is_targeting(false), aimed_at_feet(false), msg_generated(false),
-               noise_generated(false), passed_target(false),
-               in_explosion_phase(false), smart_monster(false),
-               attitude(ATT_HOSTILE), foe_ratio(0),
-               chose_ray(false), beam_cancelled(false),
-               dont_stop_player(false), bounces(false), bounce_pos(),
-               reflections(0), reflector(MID_NOBODY), auto_hit(false),
-               can_see_invis(false), nightvision(false)
-{
-}
 
 killer_type bolt::killer() const
 {
@@ -6370,7 +6360,7 @@ void bolt::setup_retrace()
     extra_range_used = 0;
 }
 
-void bolt::set_agent(actor *actor)
+void bolt::set_agent(const actor *actor)
 {
     // nullptr actor is fine by us.
     if (!actor)
@@ -6384,6 +6374,16 @@ void bolt::set_agent(actor *actor)
         thrower = KILL_MON_MISSILE;
 }
 
+/**
+ * Who caused this beam?
+ *
+ * @param ignore_reflection If true, look all the way back to the original
+ *                          source; if false (the default), treat the latest
+ *                          actor to reflect this as the source.
+ * @returns The actor that can be treated as the source. May be null if
+ *          it's a now-dead monster, or if neither the player nor a monster
+ *          caused it (for example, divine retribution).
+ */
 actor* bolt::agent(bool ignore_reflection) const
 {
     killer_type nominal_ktype = thrower;

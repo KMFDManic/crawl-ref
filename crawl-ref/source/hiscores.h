@@ -61,7 +61,7 @@ private:
     uint8_t     tiles;
     int         points;
     string      name;
-    species_type race;
+    int         race;               // species_type + legacy values
     int         job;                // job_type + legacy values
     string      race_class_name;    // overrides race & cls if non-empty.
     uint8_t     lvl;                // player level.
@@ -75,6 +75,8 @@ private:
     string      auxkilldata;        // weapon wielded, spell cast, etc
     string      indirectkiller;     // the effect or real monster that summoned
     string      killerpath;         // colon-separated intermediate killers
+    string      last_banisher;      // the name of the last thing that banished
+                                    // the player
     uint8_t     dlvl;               // dungeon level (relative)
     short       absdepth;           // 1-based absolute depth
     branch_type branch;             // dungeon branch

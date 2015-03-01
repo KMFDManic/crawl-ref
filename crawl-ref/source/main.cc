@@ -30,6 +30,7 @@
 #include "abyss.h"
 #include "acquire.h"
 #include "act-iter.h"
+#include "adjust.h"
 #include "areas.h"
 #include "arena.h"
 #include "artefact.h"
@@ -62,7 +63,6 @@
 #include "directn.h"
 #include "dlua.h"
 #include "dungeon.h"
-#include "effects.h"
 #include "end.h"
 #include "env.h"
 #include "errors.h"
@@ -89,6 +89,7 @@
 #include "item_use.h"
 #include "libutil.h"
 #include "luaterp.h"
+#include "lookup_help.h"
 #include "macro.h"
 #include "makeitem.h"
 #include "map_knowledge.h"
@@ -141,6 +142,7 @@
  #include "tiledef-dngn.h"
  #include "tilepick.h"
 #endif
+#include "timed_effects.h"
 #include "transform.h"
 #include "traps.h"
 #include "travel.h"
@@ -181,20 +183,19 @@ game_state crawl_state;
 
 string init_file_error;    // externed in newgame.cc
 
-char info[ INFO_SIZE ];    // messaging queue extern'd everywhere {dlb}
-
-int stealth;               // externed in shout.cc and player_reacts.cc
-
 void world_reacts();
 
 static key_recorder repeat_again_rec;
 
-// Clockwise, around the compass from north (same order as enum RUN_DIR)
+// Clockwise, around the compass from north (same order as run_dir_type)
 const struct coord_def Compass[9] =
 {
-    coord_def(0, -1), coord_def(1, -1), coord_def(1, 0), coord_def(1, 1),
-    coord_def(0, 1), coord_def(-1, 1), coord_def(-1, 0), coord_def(-1, -1),
-    coord_def(0, 0)
+    // kuln
+    {0, -1}, {1, -1}, {1, 0}, {1, 1},
+    // jbhy
+    {0, 1}, {-1, 1}, {-1, 0}, {-1, -1},
+    // .
+    {0, 0}
 };
 
 // Functions in main module
@@ -204,18 +205,15 @@ NORETURN static void _launch_game();
 static void _do_berserk_no_combat_penalty();
 static void _do_searing_ray();
 static void _input();
-static void _safe_move_player(int move_x, int move_y);
-static void _move_player(int move_x, int move_y);
-static void _move_player(coord_def move);
-static int  _check_adjacent(dungeon_feature_type feat, coord_def& delta);
-static void _open_door(coord_def move = coord_def(0,0));
 
+static void _safe_move_player(coord_def move);
+static void _move_player(coord_def move);
 static void _swing_at_target(coord_def move);
-static void _swing_at_target(int x, int y)
-{
-    _swing_at_target(coord_def(x,y));
-}
+
+static int  _check_adjacent(dungeon_feature_type feat, coord_def& delta);
+static void _open_door(coord_def move = {0,0});
 static void _close_door();
+
 static void _start_running(int dir, int mode);
 
 static void _prep_input();
@@ -420,10 +418,10 @@ NORETURN static void _launch_game()
 
     if (!game_start && you.prev_save_version != Version::Long)
     {
-        snprintf(info, INFO_SIZE, "Upgraded the game from %s to %s",
-                                  you.prev_save_version.c_str(),
-                                  Version::Long);
-        take_note(Note(NOTE_MESSAGE, 0, 0, info));
+        const string note = make_stringf("Upgraded the game from %s to %s",
+                                         you.prev_save_version.c_str(),
+                                         Version::Long);
+        take_note(Note(NOTE_MESSAGE, 0, 0, note));
     }
 
     if (!crawl_state.game_is_tutorial())
@@ -557,6 +555,7 @@ static void _show_commandline_options_help()
 #ifndef TARGET_OS_WINDOWS
     puts("  -gdb/-no-gdb     produce gdb backtrace when a crash happens (default:on)");
 #endif
+    puts("  -list-combos     list playable species, jobs, and character combos.");
 
 #if defined(TARGET_OS_WINDOWS) && defined(USE_TILE_LOCAL)
     text_popup(help, L"Dungeon Crawl command line help");
@@ -739,7 +738,7 @@ static void _do_wizard_command(int wiz_command, bool silent_fail)
             mpr("You can only abyss_teleport() inside the Abyss.");
         break;
 
-    case 'b': blink(1000, true, true); break;
+    case 'b': wizard_blink(); break;
     case 'B': you.teleport(true, true); break;
     case CONTROL('B'):
         if (!player_in_branch(BRANCH_ABYSS))
@@ -1119,6 +1118,7 @@ static bool _cmd_is_repeatable(command_type cmd, bool is_again = false)
     case CMD_RESISTS_SCREEN:
     case CMD_READ_MESSAGES:
     case CMD_SEARCH_STASHES:
+    case CMD_LOOKUP_HELP:
         mpr("You can't repeat informational commands.");
         return false;
 
@@ -1479,7 +1479,7 @@ static void _input()
 #ifdef USE_TILE_LOCAL
         cursor_control con(false);
 #endif
-        const command_type cmd = _get_next_cmd();
+        const command_type cmd = you.turn_is_over ? CMD_NO_CMD : _get_next_cmd();
 
         if (crawl_state.seen_hups)
             save_game(true, "Game saved, see you later!");
@@ -1751,14 +1751,14 @@ static void _experience_check()
          you.class_name.c_str());
     int perc = get_exp_progress();
 
-    if (you.experience_level < 27)
+    if (you.experience_level < you.get_max_xl())
     {
         mprf("You are %d%% of the way to level %d.", perc,
               you.experience_level + 1);
     }
     else
     {
-        mpr("I'm sorry, level 27 is as high as you can go.");
+        mprf("I'm sorry, level %d is as high as you can go.", you.get_max_xl());
         mpr("With the way you've been playing, I'm surprised you got this far.");
     }
 
@@ -1939,32 +1939,32 @@ void process_command(command_type cmd)
 #endif
 
         // Movement and running commands.
-    case CMD_ATTACK_UP_RIGHT:   _swing_at_target(1, -1); break;
-    case CMD_ATTACK_UP:         _swing_at_target(0, -1); break;
-    case CMD_ATTACK_UP_LEFT:    _swing_at_target(-1, -1); break;
-    case CMD_ATTACK_RIGHT:      _swing_at_target(1,  0); break;
-    case CMD_ATTACK_DOWN_RIGHT: _swing_at_target(1,  1); break;
-    case CMD_ATTACK_DOWN:       _swing_at_target(0,  1); break;
-    case CMD_ATTACK_DOWN_LEFT:  _swing_at_target(-1,  1); break;
-    case CMD_ATTACK_LEFT:       _swing_at_target(-1,  0); break;
+    case CMD_ATTACK_DOWN_LEFT:  _swing_at_target({-1,  1}); break;
+    case CMD_ATTACK_DOWN:       _swing_at_target({ 0,  1}); break;
+    case CMD_ATTACK_UP_RIGHT:   _swing_at_target({ 1, -1}); break;
+    case CMD_ATTACK_UP:         _swing_at_target({ 0, -1}); break;
+    case CMD_ATTACK_UP_LEFT:    _swing_at_target({-1, -1}); break;
+    case CMD_ATTACK_LEFT:       _swing_at_target({-1,  0}); break;
+    case CMD_ATTACK_DOWN_RIGHT: _swing_at_target({ 1,  1}); break;
+    case CMD_ATTACK_RIGHT:      _swing_at_target({ 1,  0}); break;
 
-    case CMD_MOVE_DOWN_LEFT:  _move_player(-1,  1); break;
-    case CMD_MOVE_DOWN:       _move_player(0,  1); break;
-    case CMD_MOVE_UP_RIGHT:   _move_player(1, -1); break;
-    case CMD_MOVE_UP:         _move_player(0, -1); break;
-    case CMD_MOVE_UP_LEFT:    _move_player(-1, -1); break;
-    case CMD_MOVE_LEFT:       _move_player(-1,  0); break;
-    case CMD_MOVE_DOWN_RIGHT: _move_player(1,  1); break;
-    case CMD_MOVE_RIGHT:      _move_player(1,  0); break;
+    case CMD_MOVE_DOWN_LEFT:  _move_player({-1,  1}); break;
+    case CMD_MOVE_DOWN:       _move_player({ 0,  1}); break;
+    case CMD_MOVE_UP_RIGHT:   _move_player({ 1, -1}); break;
+    case CMD_MOVE_UP:         _move_player({ 0, -1}); break;
+    case CMD_MOVE_UP_LEFT:    _move_player({-1, -1}); break;
+    case CMD_MOVE_LEFT:       _move_player({-1,  0}); break;
+    case CMD_MOVE_DOWN_RIGHT: _move_player({ 1,  1}); break;
+    case CMD_MOVE_RIGHT:      _move_player({ 1,  0}); break;
 
-    case CMD_SAFE_MOVE_DOWN_LEFT:  _safe_move_player(-1,  1); break;
-    case CMD_SAFE_MOVE_DOWN:       _safe_move_player(0,  1); break;
-    case CMD_SAFE_MOVE_UP_RIGHT:   _safe_move_player(1, -1); break;
-    case CMD_SAFE_MOVE_UP:         _safe_move_player(0, -1); break;
-    case CMD_SAFE_MOVE_UP_LEFT:    _safe_move_player(-1, -1); break;
-    case CMD_SAFE_MOVE_LEFT:       _safe_move_player(-1,  0); break;
-    case CMD_SAFE_MOVE_DOWN_RIGHT: _safe_move_player(1,  1); break;
-    case CMD_SAFE_MOVE_RIGHT:      _safe_move_player(1,  0); break;
+    case CMD_SAFE_MOVE_DOWN_LEFT:  _safe_move_player({-1,  1}); break;
+    case CMD_SAFE_MOVE_DOWN:       _safe_move_player({ 0,  1}); break;
+    case CMD_SAFE_MOVE_UP_RIGHT:   _safe_move_player({ 1, -1}); break;
+    case CMD_SAFE_MOVE_UP:         _safe_move_player({ 0, -1}); break;
+    case CMD_SAFE_MOVE_UP_LEFT:    _safe_move_player({-1, -1}); break;
+    case CMD_SAFE_MOVE_LEFT:       _safe_move_player({-1,  0}); break;
+    case CMD_SAFE_MOVE_DOWN_RIGHT: _safe_move_player({ 1,  1}); break;
+    case CMD_SAFE_MOVE_RIGHT:      _safe_move_player({ 1,  0}); break;
 
     case CMD_RUN_DOWN_LEFT: _start_running(RDIR_DOWN_LEFT, RMODE_START); break;
     case CMD_RUN_DOWN:      _start_running(RDIR_DOWN, RMODE_START);      break;
@@ -2125,6 +2125,7 @@ void process_command(command_type cmd)
     case CMD_MAKE_NOTE:                make_user_note();               break;
     case CMD_REPLAY_MESSAGES: replay_messages(); redraw_screen();      break;
     case CMD_RESISTS_SCREEN:           print_overview_screen();        break;
+    case CMD_LOOKUP_HELP:           keyhelp_query_descriptions();      break;
 
     case CMD_DISPLAY_RELIGION:
     {
@@ -2311,8 +2312,8 @@ static void _check_banished()
 {
     if (you.banished)
     {
-        ASSERT(brdepth[BRANCH_ABYSS] != -1);
         you.banished = false;
+        ASSERT(brdepth[BRANCH_ABYSS] != -1);
         if (!player_in_branch(BRANCH_ABYSS))
             mprf(MSGCH_BANISHMENT, "You are cast into the Abyss!");
         else if (you.depth < brdepth[BRANCH_ABYSS])
@@ -2321,7 +2322,6 @@ static void _check_banished()
             mprf(MSGCH_BANISHMENT, "The Abyss bends around you!");
         more();
         banished(you.banished_by);
-        you.banished_by.clear();
     }
 }
 
@@ -2699,7 +2699,7 @@ static void _swing_at_target(coord_def move)
     else
     {
         list<actor*> cleave_targets;
-        get_cleave_targets(&you, target, cleave_targets);
+        get_cleave_targets(you, target, cleave_targets);
 
         if (!cleave_targets.empty())
         {
@@ -2708,7 +2708,7 @@ static void _swing_at_target(coord_def move)
                 return;
 
             if (!you.fumbles_attack())
-                attack_cleave_targets(&you, cleave_targets);
+                attack_cleave_targets(you, cleave_targets);
         }
         else if (!you.fumbles_attack())
             mpr("You swing at nothing.");
@@ -2758,7 +2758,7 @@ static void _open_door(coord_def move)
         }
 
         // If there's only one door to open, don't ask.
-        if (num == 1)
+        if (num == 1 && Options.easy_door)
             door_move.delta = move;
         else
         {
@@ -2855,7 +2855,7 @@ static void _close_door()
         return;
     }
     // move got set in _check_adjacent
-    else if (num == 1)
+    else if (num == 1 && Options.easy_door)
         door_move.delta = move;
     else
     {
@@ -2911,8 +2911,9 @@ static void _close_door()
 //
 static void _do_berserk_no_combat_penalty()
 {
-    // Eating a corpse will maintain a blood rage.
-    if (current_delay_action() == DELAY_EAT)
+    // Butchering/eating a corpse will maintain a blood rage.
+    const int delay = current_delay_action();
+    if (delay == DELAY_BUTCHER || delay == DELAY_EAT)
         return;
 
     if (you.berserk_penalty == NO_BERSERK_PENALTY)
@@ -2966,21 +2967,17 @@ static void _do_searing_ray()
         end_searing_ray();
 }
 
-static void _safe_move_player(int move_x, int move_y)
+static void _safe_move_player(coord_def move)
 {
     if (!i_feel_safe(true))
         return;
-    _move_player(move_x, move_y);
-}
-
-// Called when the player moves by walking/running. Also calls attack
-// function etc when necessary.
-static void _move_player(int move_x, int move_y)
-{
-    _move_player(coord_def(move_x, move_y));
+    _move_player(move);
 }
 
 // Swap monster to this location.  Player is swapped elsewhere.
+// Moves the monster into position, but does not move the player
+// or apply location effects: the latter should happen after the
+// player is moved.
 static void _swap_places(monster* mons, const coord_def &loc)
 {
     ASSERT(map_bounds(loc));
@@ -2991,7 +2988,13 @@ static void _swap_places(monster* mons, const coord_def &loc)
         if (mons->type == MONS_WANDERING_MUSHROOM
             && monster_at(loc)->type == MONS_TOADSTOOL)
         {
-            monster_swaps_places(mons, loc - mons->pos());
+            // We'll fire location effects for 'mons' back in _move_player,
+            // so don't do so here. The toadstool won't get location effects,
+            // but the player will trigger those soon enough. This wouldn't
+            // work so well if toadstools were aquatic, had clinging, or were
+            // otherwise handled specially in monster_swap_places or in
+            // apply_location_effects.
+            monster_swaps_places(mons, loc - mons->pos(), true, false);
             return;
         }
         else
@@ -3003,12 +3006,12 @@ static void _swap_places(monster* mons, const coord_def &loc)
 
     mpr("You swap places.");
 
-    const coord_def old_loc = mons->pos();
     mons->move_to_pos(loc, true, true);
-    mons->apply_location_effects(old_loc);
     return;
 }
 
+// Called when the player moves by walking/running. Also calls attack
+// function etc when necessary.
 static void _move_player(coord_def move)
 {
     ASSERT(!crawl_state.game_is_arena() && !crawl_state.arena_suspended);
@@ -3116,7 +3119,7 @@ static void _move_player(coord_def move)
                 mpr("You're too confused to move!");
         }
 
-        const coord_def& new_targ = you.pos() + move;
+        const coord_def new_targ = you.pos() + move;
         if (!in_bounds(new_targ) || !you.can_pass_through(new_targ))
         {
             you.walking = move.abs();
@@ -3155,7 +3158,7 @@ static void _move_player(coord_def move)
         }
     }
 
-    const coord_def& targ = you.pos() + move;
+    const coord_def targ = you.pos() + move;
 
     // You can't walk out of bounds!
     if (!in_bounds(targ))
@@ -3288,7 +3291,7 @@ static void _move_player(coord_def move)
             attacking = true;
         }
     }
-    else if (you.form == TRAN_FUNGUS && moving)
+    else if (you.form == TRAN_FUNGUS && moving && !you.confused())
     {
         if (you.made_nervous_by(targ))
         {
@@ -3400,6 +3403,11 @@ static void _move_player(coord_def move)
         // Don't trigger traps when confusion causes no move.
         if (you.pos() != targ)
             move_player_to_grid(targ, true);
+        // Now it is safe to apply the swappee's location effects. Doing
+        // so earlier would allow e.g. shadow traps to put a monster
+        // at the player's location.
+        if (swap)
+            targ_monst->apply_location_effects(targ);
 
         if (you.duration[DUR_BARBS])
         {

@@ -14,9 +14,10 @@
 size_t strlcpy(char *dst, const char *src, size_t n);
 #endif
 
-string lowercase_string(string s);
+string lowercase_string(const string s);
 string &lowercase(string &s);
 string &uppercase(string &s);
+string uppercase_string(string s);
 string lowercase_first(string);
 string uppercase_first(string);
 
@@ -53,6 +54,12 @@ string trimmed_string(string s);
  * Find the enumerator e between begin and end that satisfies pred(e) and
  * whose name, as given by namefunc(e), has the earliest occurrence of the
  * substring spec.
+ *
+ * @tparam Enum     An integer-like or C-style enum type no larger than
+ *                  size_t. More specifically, Enum must be implicitly
+ *                  convertible to size_t, and must be explicitly convertible
+ *                  from size_t with static_cast. There should be no gaps
+ *                  in enumerator values between begin and end.
  *
  * @param spec      The substring to search for.
  * @param begin     The beginning of the enumerator range to search in.

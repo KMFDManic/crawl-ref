@@ -36,7 +36,7 @@ size_t strlcpy(char *dst, const char *src, size_t n)
 #endif
 
 
-string lowercase_string(string s)
+string lowercase_string(const string s)
 {
     string res;
     ucs_t c;
@@ -58,6 +58,11 @@ string &uppercase(string &s)
         ch = toupper(ch);
 
     return s;
+}
+
+string uppercase_string(string s)
+{
+    return uppercase(s);
 }
 
 // Warning: this (and uppercase_first()) relies on no libc (glibc, BSD libc,

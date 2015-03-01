@@ -23,6 +23,7 @@
 #include "colour.h"
 #include "coordit.h"
 #include "delay.h"
+#include "dgn-overview.h"
 #include "directn.h"
 #include "english.h"
 #include "env.h"
@@ -986,8 +987,15 @@ static bool _worthy_sacrifice(monster* soul, const monster* target)
  * @return      Whether the monster was revived/reknitted, or whether it
  *              remains dead (dying?).
  */
-bool lost_soul_revive(monster* mons)
+bool lost_soul_revive(monster* mons, killer_type killer)
 {
+    if (killer == KILL_RESET
+        || killer == KILL_DISMISSED
+        || killer == KILL_BANISHED)
+    {
+        return false;
+    }
+
     if (!_lost_soul_affectable(*mons))
         return false;
 
@@ -1002,6 +1010,14 @@ bool lost_soul_revive(monster* mons)
         // save this before we revive it
         const string revivee_name = mons->name(DESC_THE);
         const bool was_alive = mons->holiness() == MH_NATURAL;
+
+        // In this case the old monster will be replaced by
+        // a ghostly version, so we should record defeat now.
+        if (was_alive)
+        {
+            record_monster_defeat(mons, killer);
+            remove_unique_annotation(mons);
+        }
 
         targetter_los hitfunc(*mi, LOS_SOLID);
         flash_view_delay(UA_MONSTER, GREEN, 200, &hitfunc);
@@ -1046,18 +1062,19 @@ bool lost_soul_revive(monster* mons)
 
 void treant_release_fauna(monster* mons)
 {
+    // FIXME: this should be a fineff, at least when called from monster_die.
     int count = mons->mangrove_pests;
     bool created = false;
 
-    monster_type base_t = (one_chance_in(3) ? MONS_YELLOW_WASP
+    monster_type base_t = (one_chance_in(3) ? MONS_WASP
                                             : MONS_RAVEN);
 
     mon_enchant abj = mons->get_ench(ENCH_ABJ);
 
     for (int i = 0; i < count; ++i)
     {
-        monster_type fauna_t = (base_t == MONS_YELLOW_WASP && one_chance_in(3)
-                                                ? MONS_RED_WASP
+        monster_type fauna_t = (base_t == MONS_WASP && one_chance_in(3)
+                                                ? MONS_HORNET
                                                 : base_t);
 
         mgen_data fauna_data(fauna_t, SAME_ATTITUDE(mons),
@@ -1081,7 +1098,7 @@ void treant_release_fauna(monster* mons)
 
     if (created && you.can_see(mons))
     {
-        if (base_t == MONS_YELLOW_WASP)
+        if (base_t == MONS_WASP)
         {
                 mprf("Angry insects surge out from beneath %s foliage!",
                         mons->name(DESC_ITS).c_str());

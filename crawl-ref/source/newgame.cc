@@ -147,34 +147,48 @@ static void _print_character_info(const newgame_def* ng)
     cprintf("%s\n", _welcome(ng).c_str());
 }
 
-#ifdef ASSERTS
-static bool _species_is_undead(const species_type speci)
-{
-    return speci == SP_MUMMY || speci == SP_GHOUL || speci == SP_VAMPIRE;
-}
-#endif
-
-undead_state_type get_undead_state(const species_type sp)
-{
-    switch (sp)
-    {
-    case SP_MUMMY:
-        return US_UNDEAD;
-    case SP_GHOUL:
-        return US_HUNGRY_DEAD;
-    case SP_VAMPIRE:
-        return US_SEMI_UNDEAD;
-    default:
-        ASSERT(!_species_is_undead(sp));
-        return US_ALIVE;
-    }
-}
-
 void choose_tutorial_character(newgame_def* ng_choice)
 {
     ng_choice->species = SP_HIGH_ELF;
     ng_choice->job = JOB_FIGHTER;
     ng_choice->weapon = WPN_FLAIL;
+}
+
+// March 2008: change order of species and jobs on character selection
+// screen as suggested by Markus Maier.
+// We have subsequently added a few new categories.
+static const species_type species_order[] =
+{
+    // comparatively human-like looks
+    SP_HUMAN,          SP_HIGH_ELF,
+    SP_DEEP_ELF,       SP_DEEP_DWARF,
+    SP_HILL_ORC,
+    // small species
+    SP_HALFLING,       SP_KOBOLD,
+    SP_SPRIGGAN,
+    // large species
+    SP_OGRE,           SP_TROLL,
+    // significantly different body type from human ("monstrous")
+    SP_NAGA,           SP_CENTAUR,
+    SP_MERFOLK,        SP_MINOTAUR,
+    SP_TENGU,          SP_BASE_DRACONIAN,
+    SP_GARGOYLE,       SP_FORMICID,
+    // mostly human shape but made of a strange substance
+    SP_VINE_STALKER,
+    // celestial species
+    SP_DEMIGOD,        SP_DEMONSPAWN,
+    // undead species
+    SP_MUMMY,          SP_GHOUL,
+    SP_VAMPIRE,
+    // not humanoid at all
+    SP_FELID,          SP_OCTOPODE,
+};
+COMPILE_CHECK(ARRAYSZ(species_order) <= NUM_SPECIES);
+
+bool is_starting_species(species_type species)
+{
+    return find(species_order, species_order + ARRAYSZ(species_order),
+                species) != species_order + ARRAYSZ(species_order);
 }
 
 static void _resolve_species(newgame_def* ng, const newgame_def* ng_choice)
@@ -192,9 +206,8 @@ static void _resolve_species(newgame_def* ng, const newgame_def* ng_choice)
     case SP_VIABLE:
     {
         int good_choices = 0;
-        for (int i = 0; i < ng_num_species(); i++)
+        for (const species_type sp : species_order)
         {
-            species_type sp = get_species(i);
             if (is_good_combination(sp, ng->job, false, true)
                 && one_chance_in(++good_choices))
             {
@@ -206,22 +219,15 @@ static void _resolve_species(newgame_def* ng, const newgame_def* ng_choice)
     }
         // intentional fall-through
     case SP_RANDOM:
+        // any valid species will do
         if (ng->job == JOB_UNKNOWN)
-        {
-            // any valid species will do
-            do
-            {
-                ng->species = get_species(random2(ng_num_species()));
-            }
-            while (!is_species_valid_choice(ng->species));
-        }
+            ng->species = RANDOM_ELEMENT(species_order);
         else
         {
             // Pick a random legal character.
             int good_choices = 0;
-            for (int i = 0; i < ng_num_species(); i++)
+            for (const species_type sp : species_order)
             {
-                species_type sp = get_species(i);
                 if (is_good_combination(sp, ng->job, false, false)
                     && one_chance_in(++good_choices))
                 {
@@ -274,7 +280,7 @@ static void _resolve_job(newgame_def* ng, const newgame_def* ng_choice)
             {
                 ng->job = job_type(random2(NUM_JOBS));
             }
-            while (!is_job_valid_choice(ng->job));
+            while (!is_starting_job(ng->job));
         }
         else
         {
@@ -286,7 +292,7 @@ static void _resolve_job(newgame_def* ng, const newgame_def* ng_choice)
                 if (is_good_combination(ng->species, job, true, false)
                     && one_chance_in(++good_choices))
                 {
-                    ASSERT(is_job_valid_choice(job));
+                    ASSERT(is_starting_job(job));
                     ng->job = job;
                 }
             }
@@ -304,8 +310,14 @@ static void _resolve_job(newgame_def* ng, const newgame_def* ng_choice)
 static void _resolve_species_job(newgame_def* ng, const newgame_def* ng_choice)
 {
     // Since recommendations are no longer bidirectional, pick one of
-    // species or job to start.
-    if (coinflip())
+    // species or job to start.  If one but not the other was specified
+    // as "viable", always choose that one last; otherwise use a random
+    // order.
+    const bool spfirst  = ng_choice->species != SP_VIABLE
+                          && ng_choice->job == JOB_VIABLE;
+    const bool jobfirst = ng_choice->species == SP_VIABLE
+                          && ng_choice->job != JOB_VIABLE;
+    if (spfirst || !jobfirst && coinflip())
     {
         _resolve_species(ng, ng_choice);
         _resolve_job(ng, ng_choice);
@@ -326,15 +338,9 @@ static string _highlight_pattern(const newgame_def* ng)
         return "";
 
     string ret;
-    for (int i = 0; i < ng_num_species(); ++i)
-    {
-        const species_type species = get_species(i);
-        if (!is_species_valid_choice(species))
-            continue;
-
+    for (const species_type species : species_order)
         if (is_good_combination(species, ng->job, false, true))
             ret += species_name(species) + "  |";
-    }
 
     if (ret != "")
         ret.resize(ret.size() - 1);
@@ -641,25 +647,20 @@ static void _construct_species_menu(const newgame_def* ng,
                                     MenuFreeform* menu)
 {
     ASSERT(menu != nullptr);
-    int items_in_column = 0;
-    for (int i = 0; i < NUM_SPECIES; ++i)
-        if (is_species_valid_choice((species_type)i))
-            items_in_column++;
+    int items_in_column = ARRAYSZ(species_order);
     items_in_column = (items_in_column + 2) / 3;
     // Construct the menu, 3 columns
     TextItem* tmp = nullptr;
     string text;
     coord_def min_coord(0,0);
     coord_def max_coord(0,0);
+    int pos = 0;
 
-    for (int i = 0, pos = 0; i < ng_num_species(); ++i, ++pos)
+    for (const species_type species : species_order)
     {
-        const species_type species = get_species(i);
-        if (!is_species_valid_choice(species)
-            || (ng->job != JOB_UNKNOWN
-                && species_allowed(ng->job, species) == CC_BANNED))
+        if (ng->job != JOB_UNKNOWN
+            && species_allowed(ng->job, species) == CC_BANNED)
         {
-            --pos;
             continue;
         }
 
@@ -699,6 +700,8 @@ static void _construct_species_menu(const newgame_def* ng,
         tmp->set_visible(true);
         if (defaults.species == species)
             menu->set_active_item(tmp);
+
+        ++pos;
     }
 
     // Add all the special button entries
@@ -1077,7 +1080,7 @@ static void _construct_backgrounds_menu(const newgame_def* ng,
             "Zealot",
             coord_def(15, 0), 20,
             {JOB_BERSERKER, JOB_ABYSSAL_KNIGHT, JOB_CHAOS_KNIGHT,
-             JOB_HEALER, JOB_UNKNOWN, JOB_UNKNOWN, JOB_UNKNOWN,
+             JOB_UNKNOWN, JOB_UNKNOWN, JOB_UNKNOWN, JOB_UNKNOWN,
              JOB_UNKNOWN, JOB_UNKNOWN}
         },
         {

@@ -113,21 +113,25 @@ static armour_type _pick_wearable_armour(const armour_type arm)
 
     case SP_OCTOPODE:
         if (arm != ARM_HELMET && arm != ARM_SHIELD)
+        {
             if (coinflip())
                 result = ARM_HELMET;
             else
                 result = ARM_SHIELD;
+        }
         // and fall through for shield size adjustments
 
     default:
         if (arm == ARM_CENTAUR_BARDING || arm == ARM_NAGA_BARDING)
             result = ARM_BOOTS;
         if (arm == ARM_SHIELD)
+        {
             if (x_chance_in_y(15 - you.skills[SK_SHIELDS], 20))
                 result = ARM_BUCKLER;
             else if (x_chance_in_y(you.skills[SK_SHIELDS] - 10, 15)
                      && you.species != SP_KOBOLD && you.species != SP_HALFLING)
                 result = ARM_LARGE_SHIELD;
+        }
         break;
     }
 
@@ -677,12 +681,6 @@ static int _acquirement_misc_subtype(bool /*divine*/, int & /*quantity*/)
                                                    1, MISC_DECK_OF_WONDERS,
                                                    2, MISC_DECK_OF_CHANGES,
                                                    2, MISC_DECK_OF_DEFENCE,
-                                                   // The player might want
-                                                   // multiple of these.
-    (you.seen_misc[MISC_LAMP_OF_FIRE] ?       8 : 15), MISC_LAMP_OF_FIRE,
-    (you.seen_misc[MISC_PHIAL_OF_FLOODS] ?    8 : 15), MISC_PHIAL_OF_FLOODS,
-    (you.seen_misc[MISC_FAN_OF_GALES] ?       8 : 15), MISC_FAN_OF_GALES,
-    (you.seen_misc[MISC_STONE_OF_TREMORS] ?   8 : 15), MISC_STONE_OF_TREMORS,
                                                    // These have charges, so
                                                    // give them a constant
                                                    // weight.
@@ -692,6 +690,10 @@ static int _acquirement_misc_subtype(bool /*divine*/, int & /*quantity*/)
                                                    // The player never needs
                                                    // more than one.
     (you.seen_misc[MISC_DISC_OF_STORMS] ?     0 :  7), MISC_DISC_OF_STORMS,
+    (you.seen_misc[MISC_LAMP_OF_FIRE] ?       0 : 15), MISC_LAMP_OF_FIRE,
+    (you.seen_misc[MISC_PHIAL_OF_FLOODS] ?    0 : 15), MISC_PHIAL_OF_FLOODS,
+    (you.seen_misc[MISC_FAN_OF_GALES] ?       0 : 15), MISC_FAN_OF_GALES,
+    (you.seen_misc[MISC_STONE_OF_TREMORS] ?   0 : 15), MISC_STONE_OF_TREMORS,
     (you.seen_misc[MISC_LANTERN_OF_SHADOWS] ? 0 :  7), MISC_LANTERN_OF_SHADOWS,
                                                    0);
 
@@ -843,11 +845,11 @@ static int _spell_weight(spell_type spell)
     ASSERT(spell != SPELL_NO_SPELL);
 
     int weight = 0;
-    unsigned int disciplines = get_spell_disciplines(spell);
+    spschools_type disciplines = get_spell_disciplines(spell);
     int count = 0;
     for (int i = 0; i <= SPTYP_LAST_EXPONENT; i++)
     {
-        int disc = 1 << i;
+        const auto disc = spschools_type::exponent(i);
         if (disciplines & disc)
         {
             int skill = you.skills[spell_type2skill(disc)];
@@ -933,9 +935,8 @@ static bool _do_book_acquirement(item_def &book, int agent)
         int magic_weights = 0;
         int other_weights = 0;
 
-        for (int i = SK_FIRST_SKILL; i < NUM_SKILLS; i++)
+        for (skill_type sk = SK_FIRST_SKILL; sk < NUM_SKILLS; ++sk)
         {
-            skill_type sk = static_cast<skill_type>(i);
             int weight = you.skills[sk];
 
             if (_is_magic_skill(sk))
@@ -1029,17 +1030,11 @@ static bool _do_book_acquirement(item_def &book, int agent)
 
     case BOOK_MANUAL:
     {
-        // The Tome of Destruction is rare enough we won't change this.
-        if (book.sub_type == BOOK_DESTRUCTION)
-            return true;
-
         int weights[NUM_SKILLS];
         int total_weights = 0;
 
-        for (int i = SK_FIRST_SKILL; i < NUM_SKILLS; i++)
+        for (skill_type sk = SK_FIRST_SKILL; sk < NUM_SKILLS; ++sk)
         {
-            skill_type sk = static_cast<skill_type>(i);
-
             int skl = you.skills[sk];
 
             if (skl == 27 || is_useless_skill(sk))
@@ -1168,7 +1163,7 @@ int acquirement_create_item(object_class_type class_wanted,
                          || agent == GOD_TROG);
     int thing_created = NON_ITEM;
     int quant = 1;
-#define ITEM_LEVEL (divine ? MAKE_GIFT_ITEM : MAKE_GOOD_ITEM)
+#define ITEM_LEVEL (divine ? ISPEC_GIFT : ISPEC_GOOD_ITEM)
 #define MAX_ACQ_TRIES 40
     for (int item_tries = 0; item_tries < MAX_ACQ_TRIES; item_tries++)
     {
@@ -1310,7 +1305,7 @@ int acquirement_create_item(object_class_type class_wanted,
             && is_artefact(acq_item))
         {
             artefact_properties_t  proprt;
-            artefact_wpn_properties(acq_item, proprt);
+            artefact_properties(acq_item, proprt);
 
             // Check vs. stats. positive stats will automatically fall
             // through.  As will negative stats that won't kill you.

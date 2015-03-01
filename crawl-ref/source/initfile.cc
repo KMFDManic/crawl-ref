@@ -40,7 +40,9 @@
 #include "mapdef.h"
 #include "message.h"
 #include "mon-util.h"
+#include "newgame.h"
 #include "options.h"
+#include "playable.h"
 #include "player.h"
 #include "prompt.h"
 #include "species.h"
@@ -290,6 +292,8 @@ int str_to_summon_type(const string &str)
         return MON_SUMM_WRATH;
     if (str == "aid")
         return MON_SUMM_AID;
+    if (str == "lantern")
+        return MON_SUMM_LANTERN;
 
     return spell_by_name(str);
 }
@@ -373,7 +377,7 @@ static species_type _str_to_species(const string &str)
     if (ret == SP_UNKNOWN)
         ret = str_to_species(str);
 
-    if (!is_species_valid_choice(ret))
+    if (!is_starting_species(ret))
         ret = SP_UNKNOWN;
 
     if (ret == SP_UNKNOWN)
@@ -408,7 +412,7 @@ job_type str_to_job(const string &str)
     if (job == JOB_UNKNOWN)
         job = get_job_by_name(str.c_str());
 
-    if (!is_job_valid_choice(job))
+    if (!is_starting_job(job))
         job = JOB_UNKNOWN;
 
     if (job == JOB_UNKNOWN)
@@ -761,6 +765,7 @@ void game_options::reset_options()
     symmetric_scroll = true;
     scroll_margin_x  = 2;
     scroll_margin_y  = 2;
+    always_show_exclusions = true;
 
     autopickup_on    = 1;
     autopickup_starting_ammo = true;
@@ -793,6 +798,7 @@ void game_options::reset_options()
     easy_unequip           = true;
     equip_unequip          = false;
     jewellery_prompt       = false;
+    easy_door              = true;
     confirm_butcher        = CONFIRM_AUTO;
     easy_eat_chunks        = false;
     auto_eat_chunks        = false;
@@ -803,7 +809,6 @@ void game_options::reset_options()
     magic_point_warning    = 0;
     skill_focus            = SKM_FOCUS_ON;
     cloud_status           = !is_tiles();
-    trapwalk_safe_hp       = true;
 
     user_note_prefix       = "";
     note_all_skill_levels  = false;
@@ -812,6 +817,8 @@ void game_options::reset_options()
     note_chat_messages     = false;
     note_dgl_messages      = true;
     note_hp_percent        = 5;
+
+    fail_severity_to_confirm = 3;
 
     clear_messages         = false;
 #ifdef TOUCH_UI
@@ -920,6 +927,8 @@ void game_options::reset_options()
                    false, false);
 
     item_stack_summary_minimum = 4;
+
+    pizzas.clear();
 
 #ifdef WIZARD
     fsim_rounds = 4000L;
@@ -1701,8 +1710,9 @@ void read_options(const string &s, bool runscript, bool clear_aliases)
 
 game_options::game_options()
 {
-    lang = LANG_EN;
+    language = LANG_EN;
     lang_name = 0;
+    fake_langs.clear();
 #if 0
     if (Version::ReleaseType == VER_ALPHA)
     {
@@ -2425,17 +2435,18 @@ void game_options::read_option_line(const string &str, bool runscript)
     } while (false)
 #define BOOL_OPTION(_opt) BOOL_OPTION_NAMED(#_opt, _opt)
 
-#define COLOUR_OPTION_NAMED(_opt_str, _opt_var)                         \
+#define COLOUR_OPTION_NAMED(_opt_str, _opt_var, elemental)              \
     if (key == _opt_str) do {                                           \
-        const int col = str_to_colour(field);                           \
+        const int col = str_to_colour(field, -1, true, elemental);      \
         if (col != -1) {                                                \
-            _opt_var = col;                                       \
+            _opt_var = col;                                             \
         } else {                                                        \
             /*fprintf(stderr, "Bad %s -- %s\n", key, field.c_str());*/  \
             report_error("Bad %s -- %s\n", key.c_str(), field.c_str()); \
         }                                                               \
     } while (false)
-#define COLOUR_OPTION(_opt) COLOUR_OPTION_NAMED(#_opt, _opt)
+#define COLOUR_OPTION(_opt) COLOUR_OPTION_NAMED(#_opt, _opt, true)
+#define UI_COLOUR_OPTION(_opt) COLOUR_OPTION_NAMED(#_opt, _opt, false)
 
 #define CURSES_OPTION_NAMED(_opt_str, _opt_var)     \
     if (key == _opt_str) do {                       \
@@ -2621,6 +2632,8 @@ void game_options::read_option_line(const string &str, bool runscript)
         if (!set_lang(field.c_str()))
             report_error("No translations for language: %s\n", field.c_str());
     }
+    else if (key == "fake_lang")
+        set_fake_langs(field);
     else if (key == "default_autopickup")
     {
         if (_read_bool(field, true))
@@ -2661,6 +2674,7 @@ void game_options::read_option_line(const string &str, bool runscript)
         else if (field == "prompt")
             allow_self_target = CONFIRM_PROMPT;
     }
+    else BOOL_OPTION(show_uncursed);
     else BOOL_OPTION(easy_quit_item_prompts);
     else BOOL_OPTION_NAMED("easy_quit_item_lists", easy_quit_item_prompts);
     else BOOL_OPTION(travel_open_doors);
@@ -2669,6 +2683,7 @@ void game_options::read_option_line(const string &str, bool runscript)
     else BOOL_OPTION(jewellery_prompt);
     else BOOL_OPTION_NAMED("easy_armour", easy_unequip);
     else BOOL_OPTION_NAMED("easy_armor", easy_unequip);
+    else BOOL_OPTION(easy_door);
     else if (key == "confirm_butcher")
     {
         if (field == "always")
@@ -2715,7 +2730,7 @@ void game_options::read_option_line(const string &str, bool runscript)
         else if (col == MSGCOL_NONE)
             fprintf(stderr, "Bad colour -- %s\n", field.c_str());
     }
-    else COLOUR_OPTION(background_colour);
+    else UI_COLOUR_OPTION(background_colour);
     else COLOUR_OPTION(detected_item_colour);
     else COLOUR_OPTION(detected_monster_colour);
     else COLOUR_OPTION(remembered_monster_colour);
@@ -2799,7 +2814,7 @@ void game_options::read_option_line(const string &str, bool runscript)
     else BOOL_OPTION(no_dark_brand);
     // no_dark_brand applies here as well.
     else CURSES_OPTION(heap_brand);
-    else COLOUR_OPTION(status_caption_colour);
+    else UI_COLOUR_OPTION(status_caption_colour);
     else if (key == "arena_teams")
         game.arena_teams = field;
     // [ds] Allow changing map only if the map hasn't been set on the
@@ -2872,6 +2887,13 @@ void game_options::read_option_line(const string &str, bool runscript)
     }
     else if (key == "fire_order")
         set_fire_order(field, plus_equal, caret_equal);
+    else if (key == "pizza")
+    {
+        const vector<string> all_pizzas = split_string(",", field);
+        // only non-empty pizza strings
+        copy_if(all_pizzas.begin(), all_pizzas.end(), back_inserter(pizzas),
+                [](string p) { return !trimmed_string(p).empty(); });
+    }
 #if !defined(DGAMELAUNCH) || defined(DGL_REMEMBER_NAME)
     else BOOL_OPTION(remember_name);
 #endif
@@ -2947,6 +2969,7 @@ void game_options::read_option_line(const string &str, bool runscript)
             scrollmarg = 0;
         scroll_margin_x = scroll_margin_y = scrollmarg;
     }
+    else BOOL_OPTION(always_show_exclusions);
     else if (key == "user_note_prefix")
     {
         // field is already cleaned up from trim_string()
@@ -3847,6 +3870,7 @@ void game_options::read_option_line(const string &str, bool runscript)
     else BOOL_OPTION(arena_dump_msgs);
     else BOOL_OPTION(arena_dump_msgs_all);
     else BOOL_OPTION(arena_list_eq);
+    else INT_OPTION(fail_severity_to_confirm, -1, 3);
 
     // Catch-all else, copies option into map
     else if (runscript)
@@ -3873,6 +3897,42 @@ void game_options::read_option_line(const string &str, bool runscript)
     }
 }
 
+static const map<string, flang_t> fake_lang_names = {
+    { "dwarven", FLANG_DWARVEN },
+    { "dwarf", FLANG_DWARVEN },
+
+    { "jäger", FLANG_JAGERKIN },
+    { "jägerkin", FLANG_JAGERKIN },
+    { "jager", FLANG_JAGERKIN },
+    { "jagerkin", FLANG_JAGERKIN },
+    { "jaeger", FLANG_JAGERKIN },
+    { "jaegerkin", FLANG_JAGERKIN },
+
+    // Due to a historical conflict with actual german, slang names are
+    // supported. Not the really rude ones, though.
+    { "de", FLANG_KRAUT },
+    { "german", FLANG_KRAUT },
+    { "kraut", FLANG_KRAUT },
+    { "jerry", FLANG_KRAUT },
+    { "fritz", FLANG_KRAUT },
+
+    { "futhark", FLANG_FUTHARK },
+    { "runes", FLANG_FUTHARK },
+    { "runic", FLANG_FUTHARK },
+
+    { "wide", FLANG_WIDE },
+    { "doublewidth", FLANG_WIDE },
+    { "fullwidth", FLANG_WIDE },
+
+    { "grunt", FLANG_GRUNT },
+    { "sgrunt", FLANG_GRUNT },
+    { "!!!", FLANG_GRUNT },
+
+    { "butt", FLANG_BUTT },
+    { "buttbot", FLANG_BUTT },
+    { "tef", FLANG_BUTT },
+};
+
 bool game_options::set_lang(const char *lc)
 {
     if (!lc)
@@ -3883,72 +3943,115 @@ bool game_options::set_lang(const char *lc)
 
     const string l = lowercase_string(lc); // Windows returns it capitalized.
     if (l == "en" || l == "english")
-        lang = LANG_EN, lang_name = 0; // disable the db
+        language = LANG_EN, lang_name = 0; // disable the db
     else if (l == "cs" || l == "czech" || l == "český" || l == "cesky")
-        lang = LANG_CS, lang_name = "cs";
+        language = LANG_CS, lang_name = "cs";
     else if (l == "da" || l == "danish" || l == "dansk")
-        lang = LANG_DA, lang_name = "da";
+        language = LANG_DA, lang_name = "da";
     else if (l == "de" || l == "german" || l == "deutsch")
-        lang = LANG_DE, lang_name = "de";
+        language = LANG_DE, lang_name = "de";
     else if (l == "el" || l == "greek" || l == "ελληνικά" || l == "ελληνικα")
-        lang = LANG_EL, lang_name = "el";
+        language = LANG_EL, lang_name = "el";
     else if (l == "es" || l == "spanish" || l == "español" || l == "espanol")
-        lang = LANG_ES, lang_name = "es";
+        language = LANG_ES, lang_name = "es";
     else if (l == "fi" || l == "finnish" || l == "suomi")
-        lang = LANG_FI, lang_name = "fi";
+        language = LANG_FI, lang_name = "fi";
     else if (l == "fr" || l == "french" || l == "français" || l == "francais")
-        lang = LANG_FR, lang_name = "fr";
+        language = LANG_FR, lang_name = "fr";
     else if (l == "hu" || l == "hungarian" || l == "magyar")
-        lang = LANG_HU, lang_name = "hu";
+        language = LANG_HU, lang_name = "hu";
     else if (l == "it" || l == "italian" || l == "italiano")
-        lang = LANG_IT, lang_name = "it";
+        language = LANG_IT, lang_name = "it";
     else if (l == "ja" || l == "japanese" || l == "日本人")
-        lang = LANG_JA, lang_name = "ja";
+        language = LANG_JA, lang_name = "ja";
     else if (l == "ko" || l == "korean" || l == "한국의")
-        lang = LANG_KO, lang_name = "ko";
+        language = LANG_KO, lang_name = "ko";
     else if (l == "lt" || l == "lithuanian" || l == "lietuvos")
-        lang = LANG_LT, lang_name = "lt";
+        language = LANG_LT, lang_name = "lt";
     else if (l == "lv" || l == "latvian" || l == "lettish"
              || l == "latvijas" || l == "latviešu"
              || l == "latvieshu" || l == "latviesu")
     {
-        lang = LANG_LV, lang_name = "lv";
+        language = LANG_LV, lang_name = "lv";
     }
     else if (l == "nl" || l == "dutch" || l == "nederlands")
-        lang = LANG_NL, lang_name = "nl";
+        language = LANG_NL, lang_name = "nl";
     else if (l == "pl" || l == "polish" || l == "polski")
-        lang = LANG_PL, lang_name = "pl";
+        language = LANG_PL, lang_name = "pl";
     else if (l == "pt" || l == "portuguese" || l == "português" || l == "portugues")
-        lang = LANG_PT, lang_name = "pt";
+        language = LANG_PT, lang_name = "pt";
     else if (l == "ru" || l == "russian" || l == "русский" || l == "русскии")
-        lang = LANG_RU, lang_name = "ru";
+        language = LANG_RU, lang_name = "ru";
     else if (l == "sv" || l == "swedish" || l == "svenska")
-        lang = LANG_SV, lang_name = "sv";
+        language = LANG_SV, lang_name = "sv";
     else if (l == "zh" || l == "chinese" || l == "中国的" || l == "中國的")
-        lang = LANG_ZH, lang_name = "zh";
-    // Fake languages do not reset lang_name, allowing a translated
-    // database in an actual language.  This is probably pointless for
-    // most fake langs, though.
-    else if (l == "dwarven" || l == "dwarf")
-        lang = LANG_DWARVEN;
-    else if (l == "jäger" || l == "jägerkin" || l == "jager" || l == "jagerkin"
-             || l == "jaeger" || l == "jaegerkin")
+        language = LANG_ZH, lang_name = "zh";
+    else if (const flang_t * const flang = map_find(fake_lang_names, l))
     {
-        lang = LANG_JAGERKIN;
+        // Handle fake languages for backwards-compatibility with old rcs.
+        // Override rather than stack, because that's how it used to work.
+        fake_langs = { { *flang, -1 } };
     }
-    // Due to a conflict with actual "de", this uses slang names for the
-    // option.  Let's try to keep to less rude ones, though.
-    else if (l == "kraut" || l == "jerry" || l == "fritz")
-        lang = LANG_KRAUT;
-    else if (l == "futhark" || l == "runes" || l == "runic")
-        lang = LANG_FUTHARK;
-    else if (l == "wide" || l == "doublewidth" || l == "fullwidth")
-        lang = LANG_WIDE;
-    else if (l == "grunt" || l == "sgrunt" || l == "!!!")
-        lang = LANG_GRUNT;
     else
         return false;
     return true;
+}
+
+/**
+ * Apply the player's fake language settings.
+ *
+ * @param input     The value of the "fake_lang" field.
+ */
+void game_options::set_fake_langs(const string &input)
+{
+    fake_langs.clear();
+    for (const string &flang_text : split_string(",", input))
+    {
+        const int MAX_LANGS = 3;
+        if (fake_langs.size() >= (size_t) MAX_LANGS)
+        {
+            report_error("Too many fake langs; maximum is %d", MAX_LANGS);
+            break;
+        }
+
+        const vector<string> split_flang = split_string(":", flang_text);
+        const string flang_name = split_flang[0];
+        if (split_flang.size() > 2)
+        {
+            report_error("Invalid fake-lang format: %s", flang_text.c_str());
+            continue;
+        }
+
+        int tval = -1;
+        const int value = split_flang.size() >= 2
+                          && parse_int(split_flang[1].c_str(), tval) ? tval : -1;
+
+        const flang_t *flang = map_find(fake_lang_names, flang_name);
+        if (flang)
+        {
+            if (split_flang.size() >= 2)
+            {
+                if (*flang != FLANG_BUTT)
+                {
+                    report_error("Lang %s doesn't take a value",
+                                 flang_name.c_str());
+                    continue;
+                }
+
+                if (value == -1)
+                {
+                    report_error("Invalid value '%s' provided for lang",
+                                 split_flang[1].c_str());
+                    continue;
+                }
+            }
+
+            fake_langs.push_back({*flang, value});
+        }
+        else
+            report_error("Unknown language %s!", flang_name.c_str());
+
+    }
 }
 
 // Checks an include file name for safety and resolves it to a readable path.
@@ -4165,6 +4268,7 @@ enum commandline_option_type
     CLO_NO_GDB, CLO_NOGDB,
     CLO_THROTTLE,
     CLO_NO_THROTTLE,
+    CLO_LIST_COMBOS, // List species, jobs, and legal combos, in that order.
 #ifdef USE_TILE_WEB
     CLO_WEBTILES_SOCKET,
     CLO_AWAIT_CONNECTION,
@@ -4182,7 +4286,7 @@ static const char *cmd_ops[] =
     "builddb", "help", "version", "seed", "save-version", "sprint",
     "extra-opt-first", "extra-opt-last", "sprint-map", "edit-save",
     "print-charset", "zotdef", "tutorial", "wizard", "explore", "no-save",
-    "gdb", "no-gdb", "nogdb", "throttle", "no-throttle",
+    "gdb", "no-gdb", "nogdb", "throttle", "no-throttle", "list-combos",
 #ifdef USE_TILE_WEB
     "webtiles-socket", "await-connection", "print-webtiles-options",
 #endif
@@ -4793,6 +4897,18 @@ bool parse_args(int argc, char **argv, bool rc_only)
         case CLO_DUMP_MAPS:
             crawl_state.dump_maps = true;
             break;
+
+        case CLO_LIST_COMBOS:
+        {
+            auto join = [](const vector<string> &vs) {
+                return comma_separated_line(vs.begin(), vs.end(), ",", ",");
+            };
+            fprintf(stdout, "%s\n%s\n%s\n",
+                    join(playable_species_names()).c_str(),
+                    join(playable_job_names()).c_str(),
+                    join(playable_combo_names()).c_str());
+            end(0);
+        }
 
         case CLO_TEST:
             crawl_state.test = true;

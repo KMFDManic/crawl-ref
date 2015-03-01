@@ -241,8 +241,12 @@ static vector<spell_type> _spellset_contents(const spellset &spells)
  */
 static int _spell_colour(spell_type spell, const item_def* const source_item)
 {
+    if (!crawl_state.need_save)
+        return COL_UNKNOWN;
+
+    const bool rod = source_item && OBJ_RODS == source_item->base_type;
     if (!source_item || source_item->base_type != OBJ_BOOKS)
-        return spell_highlight_by_utility(spell);
+        return spell_highlight_by_utility(spell, COL_UNKNOWN, false, rod);
 
     if (you.has_spell(spell))
         return COL_MEMORIZED;
@@ -259,7 +263,7 @@ static int _spell_colour(spell_type spell, const item_def* const source_item)
     if (!you.has_spell(spell))
         return COL_UNMEMORIZED;
 
-    return spell_highlight_by_utility(spell);
+    return spell_highlight_by_utility(spell, COL_UNKNOWN, false, rod);
 }
 
 /**
@@ -277,7 +281,7 @@ static string _spell_schools(spell_type spell)
 
     for (int i = 0; i <= SPTYP_LAST_EXPONENT; i++)
     {
-        const int school_flag = 1 << i;
+        const auto school_flag = spschools_type::exponent(i);
         if (!spell_typematch(spell, school_flag))
             continue;
 

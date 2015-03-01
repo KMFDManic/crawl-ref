@@ -554,16 +554,6 @@ public:
     static const FormStatue &instance() { static FormStatue inst; return inst; }
 
     /**
-     * The AC bonus of the form, multiplied by 100 to match
-     * player::armour_class().
-     */
-    int get_ac_bonus() const
-    {
-        return Form::get_ac_bonus()
-               - (you.species == SP_GARGOYLE ? 400 : 0);
-    }
-
-    /**
      * Find the player's base unarmed damage in this form.
      */
     int get_base_unarmed_damage() const
@@ -1525,7 +1515,7 @@ static bool _flying_in_new_form(transformation_type which_trans)
             sources_removed++;
         if (inf.base_type == OBJ_ARMOUR && inf.special == SPARM_FLYING)
             sources_removed++;
-        if (is_artefact(inf) && artefact_known_wpn_property(inf, ARTP_FLY))
+        if (is_artefact(inf) && artefact_known_property(inf, ARTP_FLY))
             sources_removed++;
     }
 

@@ -510,7 +510,7 @@ static bool _setup_missile_beam(const actor *agent, bolt &beam, item_def &item,
     beam.glyph = dchar_glyph(zapsym);
     beam.was_missile = true;
 
-    item_def *launcher  = const_cast<actor*>(agent)->weapon(0);
+    item_def *launcher  = agent->weapon(0);
     if (launcher && !item.launched_by(*launcher))
         launcher = nullptr;
 
@@ -529,7 +529,8 @@ static bool _setup_missile_beam(const actor *agent, bolt &beam, item_def &item,
         beam.thrower       = KILL_MON_MISSILE;
     }
 
-    beam.source_id = agent->mid;
+    beam.range        = you.current_vision;
+    beam.source_id    = agent->mid;
     beam.item         = &item;
     beam.effect_known = item_ident(item, ISFLAG_KNOW_TYPE);
     beam.source       = agent->pos();
@@ -720,28 +721,6 @@ bool throw_it(bolt &pbolt, int throw_2, dist *target)
     const object_class_type wepClass = thrown.base_type;
     const int               wepType  = thrown.sub_type;
 
-    // Determine range.
-    int max_range = INT_MAX;
-    int range = INT_MAX;
-
-    // are we properly throwing/shooting this thing?
-    if (projected != LRET_FUMBLED)
-    {
-        if (wepType == MI_LARGE_ROCK)
-        {
-            range     = random_range(5, 8) + random2(you.strength() / 5);
-            max_range = 7 + you.strength() / 5;
-        }
-        else if (wepType == MI_THROWING_NET)
-            max_range = range = 2 + you.body_size(PSIZE_BODY);
-    }
-
-    range = min(range, (int)you.current_vision);
-    max_range = min(max_range, (int)you.current_vision);
-
-    // For the tracer, use max_range. For the actual shot, use range.
-    pbolt.range = max_range;
-
     // Save the special explosion (exploding missiles) for later.
     // Need to clear this if unknown to avoid giving away the explosion.
     bolt* expl = pbolt.special_explosion;
@@ -800,7 +779,6 @@ bool throw_it(bolt &pbolt, int throw_2, dist *target)
     pbolt.is_tracer = false;
 
     // Reset values.
-    pbolt.range = range;
     pbolt.special_explosion = expl;
 
     bool unwielded = false;
@@ -816,7 +794,7 @@ bool throw_it(bolt &pbolt, int throw_2, dist *target)
     origin_set_unknown(item);
 
     // bloodpots & chunks need special handling.
-    if (is_perishable_stack(item) && thrown.quantity > 1)
+    if (thrown.quantity > 1 && is_perishable_stack(item))
     {
         // Initialise thrown item with oldest item in stack.
         const int rot_timer = remove_oldest_perishable_item(thrown);
@@ -885,7 +863,9 @@ bool throw_it(bolt &pbolt, int throw_2, dist *target)
     pbolt.pierce    = false;
     pbolt.is_tracer = false;
 
-    pbolt.loudness = ammo_type_damage(item.sub_type) / 3;
+    pbolt.loudness = item.base_type == OBJ_MISSILES
+                   ? ammo_type_damage(item.sub_type) / 3
+                   : 0; // Maybe not accurate, but reflects the damage.
 
     // Mark this item as thrown if it's a missile, so that we'll pick it up
     // when we walk over it.
@@ -987,7 +967,6 @@ bool throw_it(bolt &pbolt, int throw_2, dist *target)
 
 void setup_monster_throw_beam(monster* mons, bolt &beam)
 {
-    // FIXME we should use a sensible range here
     beam.range = you.current_vision;
     beam.source_id = mons->mid;
 
@@ -1032,9 +1011,6 @@ bool mons_throw(monster* mons, bolt &beam, int msl, bool teleport)
     // Dropping item copy, since the launched item might be different.
     item_def item = mitm[msl];
     item.quantity = 1;
-
-    // FIXME we should actually determine a sensible range here
-    beam.range         = you.current_vision;
 
     if (_setup_missile_beam(mons, beam, item, ammo_name, returning))
         return false;
@@ -1179,15 +1155,14 @@ bool thrown_object_destroyed(item_def *item, const coord_def& where)
 
     switch (brand)
     {
-        case SPMSL_STEEL:
-            chance *= 10;
-            break;
         case SPMSL_FLAME:
         case SPMSL_FROST:
         case SPMSL_CURARE:
             chance /= 2;
             break;
     }
+
+    dprf("mulch chance: %d in %d", mult, chance);
 
     return x_chance_in_y(mult, chance);
 }

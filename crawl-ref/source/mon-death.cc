@@ -24,7 +24,6 @@
 #include "delay.h"
 #include "describe.h"
 #include "dgn-overview.h"
-#include "effects.h"
 #include "english.h"
 #include "env.h"
 #include "fineff.h"
@@ -55,6 +54,7 @@
 #include "religion.h"
 #include "rot.h"
 #include "spl-damage.h"
+#include "spl-goditem.h"
 #include "spl-miscast.h"
 #include "spl-summoning.h"
 #include "state.h"
@@ -62,6 +62,7 @@
 #include "stringutil.h"
 #include "target.h"
 #include "terrain.h"
+#include "timed_effects.h"
 #include "traps.h"
 #include "unwind.h"
 #include "viewchar.h"
@@ -112,12 +113,9 @@ monster_type fill_out_corpse(const monster* mons,
                 corpse_class = draco_or_demonspawn_subspecies(mons);
         }
 
-        if (mons->has_ench(ENCH_GLOWING_SHAPESHIFTER))
-            mtype = corpse_class = MONS_GLOWING_SHAPESHIFTER;
-        else if (mons->has_ench(ENCH_SHAPESHIFTER))
-            mtype = corpse_class = MONS_SHAPESHIFTER;
-        else if (mons->props.exists(ORIGINAL_TYPE_KEY))
+        if (mons->props.exists(ORIGINAL_TYPE_KEY))
         {
+            // Shapeshifters too.
             mtype = (monster_type) mons->props[ORIGINAL_TYPE_KEY].get_int();
             corpse_class = mons_species(mtype);
         }
@@ -417,6 +415,31 @@ static void _give_experience(int player_exp, int monster_exp,
     _give_monster_experience(monster_exp, killer_index);
 }
 
+/**
+ * Turn a given corpse into gold. Praise Gozag!
+ *
+ * Gold is random, but correlates weakly with monster mass.
+ *
+ * Also sets the gozag distraction sparkle timer on the newly created gold.
+ *
+ * @param corpse        The corpse item to be Midasified.
+ */
+void goldify_corpse(item_def &corpse)
+{
+    const monsterentry* me = get_monster_data(corpse.mon_type);
+    const int min_base_gold = 7;
+    // monsters weighing more than this give more than base gold
+    const int baseline_weight = 550; // MONS_HUMAN
+    const int base_gold = max(min_base_gold,
+                              (me->weight - baseline_weight) / 80
+                              + min_base_gold);
+    corpse.clear();
+    corpse.base_type = OBJ_GOLD;
+    corpse.quantity = base_gold / 2 + random2avg(base_gold, 2);
+    corpse.special = corpse.quantity;
+    item_colour(corpse);
+}
+
 // Returns the item slot of a generated corpse, or -1 if no corpse.
 int place_monster_corpse(const monster* mons, bool silent, bool force)
 {
@@ -460,20 +483,7 @@ int place_monster_corpse(const monster* mons, bool silent, bool force)
         return -1;
 
     if (!force && in_good_standing(GOD_GOZAG))
-    {
-        const monsterentry* me = get_monster_data(corpse_class);
-        const int min_base_gold = 7;
-        // monsters weighing more than this give more than base gold
-        const int baseline_weight = 550; // MONS_HUMAN
-        const int base_gold = max(min_base_gold,
-                                  (me->weight - baseline_weight) / 80
-                                    + min_base_gold);
-        corpse.clear();
-        corpse.base_type = OBJ_GOLD;
-        corpse.quantity = base_gold / 2 + random2avg(base_gold, 2);
-        corpse.special = corpse.quantity;
-        item_colour(corpse);
-    }
+        goldify_corpse(corpse);
 
     int o = get_mitm_slot();
 
@@ -503,12 +513,9 @@ int place_monster_corpse(const monster* mons, bool silent, bool force)
     }
 
     move_item_to_grid(&o, mons->pos(), !mons->swimming());
+
     if (o != NON_ITEM && mitm[o].base_type == OBJ_GOLD)
-    {
         invalidate_agrid(true);
-        you.redraw_armour_class = true;
-        you.redraw_evasion = true;
-    }
 
     if (you.see_cell(mons->pos()))
     {
@@ -543,7 +550,8 @@ static string _milestone_kill_verb(killer_type killer)
 {
     return killer == KILL_BANISHED ? "banished" :
            killer == KILL_PACIFIED ? "pacified" :
-           killer == KILL_ENSLAVED ? "enslaved" : "killed";
+           killer == KILL_ENSLAVED ? "enslaved" :
+           killer == KILL_SLIMIFIED ? "slimified" : "killed";
 }
 
 void record_monster_defeat(monster* mons, killer_type killer)
@@ -569,7 +577,9 @@ void record_monster_defeat(monster* mons, killer_type killer)
         mark_milestone("ghost", milestone);
     }
     // Or summoned uniques, which a summoned ghost is treated as {due}
-    else if (mons_is_or_was_unique(*mons) && !mons->is_summoned())
+    else if (mons_is_or_was_unique(*mons)
+             && !mons->is_summoned()
+             && !testbits(mons->flags, MF_SPECTRALISED))
     {
         mark_milestone("uniq",
                        _milestone_kill_verb(killer)
@@ -645,10 +655,8 @@ static bool _ely_protect_ally(monster* mons, killer_type killer)
 
     mons->hit_points = 1;
 
-    snprintf(info, INFO_SIZE, " protects %s from harm!",
-             mons->name(DESC_THE).c_str());
-
-    simple_god_message(info);
+    const string msg = " protects " + mons->name(DESC_THE) + " from harm!";
+    simple_god_message(msg.c_str());
 
     return true;
 }
@@ -685,12 +693,12 @@ static bool _ely_heal_monster(monster* mons, killer_type killer, int i)
 
     dprf("new hp: %d, ely penance: %d", mons->hit_points, ely_penance);
 
-    snprintf(info, INFO_SIZE, "%s heals %s%s",
+    const string msg = make_stringf("%s heals %s%s",
              god_name(god, false).c_str(),
              mons->name(DESC_THE).c_str(),
              mons->hit_points * 2 <= mons->max_hit_points ? "." : "!");
 
-    god_speaks(god, info);
+    god_speaks(god, msg.c_str());
     dec_penance(god, 1);
 
     return true;
@@ -794,13 +802,8 @@ static bool _monster_avoided_death(monster* mons, killer_type killer,
 
     // Before the hp check since this should not care about the power of the
     // finishing blow
-    if (killer != KILL_RESET
-        && killer != KILL_DISMISSED
-        && killer != KILL_BANISHED)
-    {
-        if (lost_soul_revive(mons))
-            return true;
-    }
+    if (lost_soul_revive(mons, killer))
+        return true;
 
     // Yredelemnul special.
     if (_yred_enslave_soul(mons, killer))
@@ -934,6 +937,10 @@ static void _mummy_curse(monster* mons, killer_type killer, int index)
     {
         target = &you;
     }
+
+    // Stepped from time?
+    if (!in_bounds(target->pos()))
+        return;
 
     if ((mons->type == MONS_MUMMY || mons->type == MONS_MENKAURE)
         && target->is_player())
@@ -1480,6 +1487,8 @@ static string _killer_type_name(killer_type killer)
         return "pacified";
     case KILL_ENSLAVED:
         return "enslaved";
+    case KILL_SLIMIFIED:
+        return "slimified";
     }
     die("invalid killer type");
 }
@@ -1638,7 +1647,7 @@ static bool _reaping(monster *mons)
  * @param maybe_good_kill   Whether the kill can be rewarding in piety.
  *                          (Not summoned, etc)
  */
-static void _fire_kill_conducts(const monster &mons, killer_type killer,
+static void _fire_kill_conducts(monster &mons, killer_type killer,
                                 int killer_index, bool maybe_good_kill)
 {
     const bool your_kill = killer == KILL_YOU ||
@@ -1647,6 +1656,10 @@ static void _fire_kill_conducts(const monster &mons, killer_type killer,
     const bool pet_kill = _is_pet_kill(killer, killer_index);
     const bool your_fault = your_kill && killer_index != YOU_FAULTLESS
                             || pet_kill;
+
+    // Pretend the monster is already dead, so that make_god_gifts_disappear
+    // (and similar) don't kill it twice.
+    unwind_var<int> fake_hp(mons.hit_points, 0);
 
     // if you or your pets didn't do it, no one cares
     if (!your_fault)
@@ -1874,18 +1887,22 @@ int monster_die(monster* mons, killer_type killer,
         }
     }
 
-    // Kills by the spectral weapon are considered as kills by the player instead
-    // Ditto Dithmenos shadow kills.
-    if ((killer == KILL_MON || killer == KILL_MON_MISSILE)
+    // Kills by the spectral weapon are considered as kills by the player
+    // instead. Ditto Dithmenos shadow melee and shadow throw.
+    if (MON_KILL(killer)
         && !invalid_monster_index(killer_index)
         && ((menv[killer_index].type == MONS_SPECTRAL_WEAPON
              && menv[killer_index].summoner == MID_PLAYER)
             || mons_is_player_shadow(&menv[killer_index])))
     {
-        killer = (killer == KILL_MON_MISSILE) ? KILL_YOU_MISSILE
-                                              : KILL_YOU;
         killer_index = you.mindex();
     }
+
+    // Set an appropriate killer; besides the cases in the preceding if,
+    // this handles Dithmenos shadow spells, which look like they come from
+    // you because the shadow's mid is MID_PLAYER.
+    if (MON_KILL(killer) && killer_index == you.mindex())
+        killer = (killer == KILL_MON_MISSILE) ? KILL_YOU_MISSILE : KILL_YOU;
 
     // Take notes and mark milestones.
     record_monster_defeat(mons, killer);
@@ -2311,7 +2328,6 @@ int monster_die(monster* mons, killer_type killer,
 
             if (in_good_standing(GOD_BEOGH)
                 && random2(you.piety) >= piety_breakpoint(2)
-                && !one_chance_in(3)
                 && !invalid_monster_index(killer_index))
             {
                 // Randomly bless the follower who killed.
@@ -2535,7 +2551,13 @@ int monster_die(monster* mons, killer_type killer,
              && (!summoned || duration > 0) && !wizard
              && mons_bennu_can_revive(mons))
     {
-        mons_bennu_revive(mons);
+        // All this information may be lost by the time the monster revives.
+        const int revives = (mons->props.exists("bennu_revives"))
+                          ? mons->props["bennu_revives"].get_byte() : 0;
+        const beh_type att = mons->has_ench(ENCH_CHARM) ? BEH_HOSTILE
+                                                        : SAME_ATTITUDE(mons);
+
+        bennu_revive_fineff::schedule(mons->pos(), revives, att, mons->foe);
     }
     else if (!mons->is_summoned())
     {
@@ -2564,7 +2586,7 @@ int monster_die(monster* mons, killer_type killer,
 
         if (mons->type == MONS_SPRIGGAN_RIDER)
         {
-            corpse2 = mounted_kill(mons, MONS_YELLOW_WASP, killer, killer_index);
+            corpse2 = mounted_kill(mons, MONS_WASP, killer, killer_index);
             mons->type = MONS_SPRIGGAN;
         }
         corpse = place_monster_corpse(mons, silent);
@@ -2663,20 +2685,27 @@ int monster_die(monster* mons, killer_type killer,
         && !fake_abjuration
         && !timeout
         && !unsummoned
-        && !(mons->flags & MF_KNOWN_SHIFTER))
-
+        && mons->props.exists(ORIGINAL_TYPE_KEY))
     {
-        if (mons->is_shapeshifter())
+        const monster_type orig =
+            (monster_type) mons->props[ORIGINAL_TYPE_KEY].get_int();
+
+        if (orig == MONS_SHAPESHIFTER || orig == MONS_GLOWING_SHAPESHIFTER)
         {
-            const string message = "'s shape twists and changes as " +
-                                   mons->pronoun(PRONOUN_SUBJECTIVE) + " dies.";
-            simple_monster_message(mons, message.c_str());
+            // No message for known shifters, unless they were originally
+            // something else.
+            if (!(mons->flags & MF_KNOWN_SHIFTER))
+            {
+                const string message = "'s shape twists and changes as "
+                                     + mons->pronoun(PRONOUN_SUBJECTIVE)
+                                     + " dies.";
+                simple_monster_message(mons, message.c_str());
+            }
         }
-        else if (mons->props.exists(ORIGINAL_TYPE_KEY))
+        else
         {
             // Avoid "Sigmund returns to its original shape as it dies.".
-            unwind_var<monster_type> mt(mons->type,
-                                        (monster_type) mons->props[ORIGINAL_TYPE_KEY].get_int());
+            unwind_var<monster_type> mt(mons->type, orig);
             int num = mons->mons_species() == MONS_HYDRA
                                         ? mons->props["old_heads"].get_int()
                                         : mons->number;
@@ -2837,6 +2866,11 @@ int mounted_kill(monster* daddy, monster_type mc, killer_type killer,
     mon.moveto(daddy->pos());
     define_monster(&mon);
     mon.flags = daddy->flags;
+
+    // Need to copy ENCH_ABJ etc. or we could get real XP/meat from a summon.
+    mon.enchantments = daddy->enchantments;
+    mon.ench_cache = daddy->ench_cache;
+
     mon.attitude = daddy->attitude;
     mon.damage_friendly = daddy->damage_friendly;
     mon.damage_total = daddy->damage_total;
@@ -3006,7 +3040,7 @@ string summoned_poof_msg(const monster* mons, bool plural)
 
     case SPELL_GHOSTLY_FLAMES:
     case SPELL_CALL_LOST_SOUL:
-        msg = "fades away";
+        msg = "fade%s away";
         break;
     }
 
@@ -3032,10 +3066,10 @@ string summoned_poof_msg(const monster* mons, bool plural)
         }
 
         if (mons->type == MONS_DROWNED_SOUL)
-            msg = "returns to the deep";
+            msg = "return%s to the deep";
 
         if (mons->has_ench(ENCH_PHANTOM_MIRROR))
-            msg = "shimmers and vanishes";
+            msg = "shimmer%s and vanish" + string(plural ? "" : "es"); // Ugh
     }
 
     // Conjugate.
@@ -3383,6 +3417,10 @@ bool mons_felid_can_revive(const monster* mons)
 
 void mons_felid_revive(monster* mons)
 {
+    // FIXME: this should be a fineff like bennu_revive_fineff. But that
+    // is tricky because the original actor will be dead (and not carrying
+    // its items) by the time the fineff fires.
+
     // Mostly adapted from bring_to_safety()
     coord_def revive_place;
     int tries = 10000;
@@ -3422,7 +3460,7 @@ void mons_felid_revive(monster* mons)
             mgen_data(type, (mons->has_ench(ENCH_CHARM) ? BEH_HOSTILE
                              : SAME_ATTITUDE(mons)),
                       0, 0, 0, revive_place, mons->foe, 0, GOD_NO_GOD,
-                      MONS_NO_MONSTER, 0, BLACK, PROX_ANYWHERE,
+                      MONS_NO_MONSTER, 0, COLOUR_INHERIT, PROX_ANYWHERE,
                       level_id::current(), hd));
 
     if (newmons)
@@ -3444,35 +3482,4 @@ bool mons_bennu_can_revive(const monster* mons)
 {
     return !mons->props.exists("bennu_revives")
            || mons->props["bennu_revives"].get_byte() < 1;
-}
-
-void mons_bennu_revive(monster* mons)
-{
-    // Bennu only resurrect once and immediately in the same spot,
-    // so this is rather abbreviated compared to felids.
-    // XXX: Maybe generalize felid_revives and merge the two anyway?
-    monster_type type = MONS_BENNU;
-    monsterentry* me = get_monster_data(type);
-    ASSERT(me);
-
-    const int revives = (mons->props.exists("bennu_revives"))
-                        ? mons->props["bennu_revives"].get_byte() + 1
-                        : 1;
-    bool res_visible = you.see_cell(mons->pos());
-
-    mgen_data mg(type, (mons->has_ench(ENCH_CHARM) ? BEH_HOSTILE
-                        : SAME_ATTITUDE(mons)),
-                        0, 0, 0, (mons->pos()), mons->foe,
-                        (res_visible ? MG_DONT_COME : 0), GOD_NO_GOD,
-                        MONS_NO_MONSTER, 0, BLACK, PROX_ANYWHERE,
-                        level_id::current());
-
-    mons->set_position(coord_def(0,0));
-
-    monster *newmons = create_monster(mg);
-    if (newmons)
-    {
-        newmons->props["bennu_revives"].get_byte() = revives;
-
-    }
 }

@@ -122,7 +122,8 @@ static bool _is_noteworthy(const Note& note)
         || note.type == NOTE_NAMED_ALLY
         || note.type == NOTE_ALLY_DEATH
         || note.type == NOTE_FEAT_MIMIC
-        || note.type == NOTE_OFFERED_SPELL)
+        || note.type == NOTE_OFFERED_SPELL
+        || note.type == NOTE_FOCUS_CARD)
     {
         return true;
     }
@@ -391,6 +392,10 @@ string Note::describe(bool when, bool where, bool what) const
                    << spell_title(static_cast<spell_type>(first))
                    << " by Vehumet.";
             break;
+        case NOTE_FOCUS_CARD:
+            result << "Drew Focus: " << name << " increased to " << first << ", "
+                   << desc << " decreased to " << second;
+            break;
         default:
             result << "Buggy note description: unknown note type";
             break;
@@ -403,24 +408,6 @@ string Note::describe(bool when, bool where, bool what) const
             result << " the pandemonium lord";
     }
     return result.str();
-}
-
-Note::Note()
-{
-    turn  = you.num_turns;
-    place = level_id::current();
-}
-
-Note::Note(NOTE_TYPES t, int f, int s, const char* n, const char* d) :
-    type(t), first(f), second(s)
-{
-    if (n)
-        name = string(n);
-    if (d)
-        desc = string(d);
-
-    turn  = you.num_turns;
-    place = level_id::current();
 }
 
 void Note::check_milestone() const

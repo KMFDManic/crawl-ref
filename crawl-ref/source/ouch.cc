@@ -28,7 +28,6 @@
 #include "delay.h"
 #include "describe.h"
 #include "dgnevent.h"
-#include "effects.h"
 #include "end.h"
 #include "env.h"
 #include "fight.h"
@@ -228,9 +227,8 @@ int check_your_resists(int hurted, beam_type flavour, string source,
 
         if (doEffects)
         {
-            if (hurted < original)
-                canned_msg(MSG_YOU_RESIST);
-            else if (hurted > original)
+            // drain_player handles the messaging here
+            if (hurted > original)
             {
                 mpr("The negative energy saps you greatly!");
                 xom_is_stimulated(200);
@@ -392,9 +390,6 @@ void lose_level()
 
     mprf(MSGCH_WARN,
          "You are now level %d!", you.experience_level);
-
-    ouch(4, KILLED_BY_DRAINING);
-    dec_mp(1);
 
     calc_hp();
     calc_mp();
@@ -720,6 +715,9 @@ static void _place_player_corpse(bool explode)
     if (fill_out_corpse(0, player_mons(), corpse) == MONS_NO_MONSTER)
         return;
 
+    if (in_good_standing(GOD_GOZAG))
+        goldify_corpse(corpse);
+
     if (explode && explode_corpse(corpse, you.pos()))
         return;
 
@@ -846,8 +844,10 @@ void ouch(int dam, kill_method_type death_type, mid_t source, const char *aux,
         {
             if (_is_damage_threatening(damage_fraction_of_hp))
             {
+                if (!you.duration[DUR_NO_SCROLLS])
+                    mpr("You feel threatened and lose the ability to read scrolls!");
+
                 you.increase_duration(DUR_NO_SCROLLS, 1 + random2(dam), 30);
-                mpr("You feel threatened and lose the ability to read scrolls!");
             }
         }
 
@@ -855,8 +855,10 @@ void ouch(int dam, kill_method_type death_type, mid_t source, const char *aux,
         {
             if (_is_damage_threatening(damage_fraction_of_hp))
             {
+                if (!you.duration[DUR_NO_POTIONS])
+                    mpr("You feel threatened and lose the ability to drink potions!");
+
                 you.increase_duration(DUR_NO_POTIONS, 1 + random2(dam), 30);
-                mpr("You feel threatened and lose the ability to drink potions!");
             }
         }
     }
@@ -1110,15 +1112,7 @@ string morgue_name(string char_name, time_t when_crawl_got_even)
 
 int actor_to_death_source(const actor* agent)
 {
-    if (!agent)
-        return NON_MONSTER;
-
-    if (agent->is_player())
-        return NON_MONSTER;
-    else if (agent->is_monster())
-        return agent->as_monster()->mindex();
-    else
-        return NON_MONSTER;
+    return agent ? agent->mindex() : NON_MONSTER;
 }
 
 int timescale_damage(const actor *act, int damage)

@@ -57,12 +57,6 @@ protected:
     tileidx_t m_tile;
 };
 
-#define INFO_SIZE       200          // size of message buffers
-#define ITEMNAME_SIZE   200          // size of item names/shop names/etc
-#define HIGHSCORE_SIZE  800          // <= 10 Lines for long format scores
-
-extern char info[INFO_SIZE];         // defined in main.cc {dlb}
-
 #define kNameLen        30
 const int kFileNameLen = 250;
 
@@ -102,7 +96,8 @@ struct coord_def
     int         x;
     int         y;
 
-    explicit coord_def(int x_in = 0, int y_in = 0) : x(x_in), y(y_in) { }
+    coord_def(int x_in, int y_in) : x(x_in), y(y_in) { }
+    coord_def() : coord_def(0,0) { }
 
     void set(int xi, int yi)
     {
@@ -289,29 +284,25 @@ typedef uint32_t mid_t;
 /// Upper bound on the number of monsters that can ever exist in a game.
 #define MID_FIRST_NON_MONSTER MID_ANON_FRIEND
 
-static inline monster_type operator++(monster_type &x)
-{
-    x = static_cast<monster_type>(x + 1);
-    return x;
-}
+/**
+ * Define overloaded ++ and -- operators for the enum T.
+ *
+ * This macro produces several inline function definitions; use it only at
+ * file/namespace scope. It requires a trailing semicolon.
+ *
+ * @param T A type expression naming the enum type to augument. Evaluated
+ *          several times.
+ */
+#define DEF_ENUM_INC(T) \
+    static inline T &operator++(T &x) { return x = static_cast<T>(x + 1); } \
+    static inline T &operator--(T &x) { return x = static_cast<T>(x - 1); } \
+    static inline T operator++(T &x, int) { T y = x; ++x; return y; } \
+    static inline T operator--(T &x, int) { T y = x; --x; return y; } \
+    COMPILE_CHECK(is_enum<T>::value)
 
-static inline monster_type operator--(monster_type &x)
-{
-    x = static_cast<monster_type>(x - 1);
-    return x;
-}
-
-static inline spell_type operator++(spell_type &x)
-{
-    x = static_cast<spell_type>(x + 1);
-    return x;
-}
-
-static inline spell_type operator--(spell_type &x)
-{
-    x = static_cast<spell_type>(x - 1);
-    return x;
-}
+DEF_ENUM_INC(monster_type);
+DEF_ENUM_INC(spell_type);
+DEF_ENUM_INC(skill_type);
 
 struct cloud_struct
 {
@@ -540,7 +531,6 @@ struct item_def
     union
     {
         short plus2;        ///< legacy/generic name for this union
-        short evoker_debt;  ///< xp~ required for evoker to finish recharging
         short used_count;   ///< the # of known times it was used (decks, wands)
                             // for wands, may hold negative ZAPCOUNT knowledge
                             // info (e.g. "recharged", "empty", "unknown")
@@ -630,9 +620,9 @@ public:
     /**
      * Sets this item as being held by a given monster.
      *
-     * @param midx The mindex of the monster.
+     * @param mon The monster. Must be in menv!
      */
-    void set_holding_monster(int midx);
+    void set_holding_monster(const monster& mon);
 
     /**
      * Get the monster holding this item.

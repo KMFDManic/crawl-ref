@@ -1231,12 +1231,13 @@ void tag_read(reader &inf, tag_type tag_id)
         tag_read_level(th);
         EAT_CANARY;
         tag_read_level_items(th);
+        // We have to do this here because tag_read_level_monsters()
+        // might kill an elsewhere Ilsuiw follower, which ends up calling
+        // terrain.cc:_dgn_check_terrain_items, which checks mitm.
+        link_items();
         EAT_CANARY;
         tag_read_level_monsters(th);
         EAT_CANARY;
-        // We have to do this here because tag_read_level_tiles() can
-        // call into Lua, which can look at the items ...
-        link_items();
 #if TAG_MAJOR_VERSION == 34
         _add_missing_branches();
 #endif
@@ -1283,7 +1284,8 @@ static void tag_construct_char(writer &th)
     // older version.
     // Please keep this compatible even over major version breaks!
 
-    // Appending fields is fine.
+    // Appending fields is fine, but inserting new fields anywhere other than
+    // the end of this function is not!
 
     marshallString2(th, you.your_name);
     marshallString2(th, Version::Long);
@@ -1296,7 +1298,6 @@ static void tag_construct_char(writer &th)
     marshallString2(th, you.jiyva_second_name);
 
     marshallByte(th, you.wizard);
-    marshallByte(th, you.explore);
 
     marshallByte(th, crawl_state.type);
     if (crawl_state.game_is_tutorial())
@@ -1307,6 +1308,8 @@ static void tag_construct_char(writer &th)
 
     // separate from the tutorial so we don't have to bump TAG_CHR_FORMAT
     marshallString2(th, crawl_state.map);
+
+    marshallByte(th, you.explore);
 }
 
 static void tag_construct_you(writer &th)
@@ -1370,6 +1373,8 @@ static void tag_construct_you(writer &th)
 
     marshallInt(th, you.zigs_completed);
     marshallByte(th, you.zig_max);
+
+    marshallString(th, you.banished_by);
 
     marshallShort(th, you.hp_max_adj_temp);
     marshallShort(th, you.hp_max_adj_perm);
@@ -1493,8 +1498,10 @@ static void tag_construct_you(writer &th)
 
     marshallByte(th, you.gift_timeout);
 
-    marshallInt(th, you.exp_docked);
-    marshallInt(th, you.exp_docked_total);
+    for (i = 0; i < NUM_GODS; i++)
+        marshallInt(th, you.exp_docked[i]);
+    for (i = 0; i < NUM_GODS; i++)
+        marshallInt(th, you.exp_docked_total[i]);
 
     // elapsed time
     marshallInt(th, you.elapsed_time);
@@ -2060,10 +2067,17 @@ void tag_read_char(reader &th, uint8_t format, uint8_t major, uint8_t minor)
     you.jiyva_second_name = unmarshallString2(th);
 
     you.wizard            = unmarshallBoolean(th);
-#if TAG_MAJOR_VERSION == 34
-    if (minor >= TAG_MINOR_EXPLORE_MODE)
+    // this was mistakenly inserted in the middle for a few tag versions - this
+    // just makes sure that games generated in that time period are still
+    // readable, but should not be used for new games
+#if TAG_CHR_FORMAT == 0
+    if (major == 34
+        && (minor >= TAG_MINOR_EXPLORE_MODE
+            && minor < TAG_MINOR_FIX_EXPLORE_MODE))
+    {
+        you.explore = unmarshallBoolean(th);
+    }
 #endif
-        you.explore       = unmarshallBoolean(th);
 
     crawl_state.type = (game_type) unmarshallUByte(th);
     if (crawl_state.game_is_tutorial())
@@ -2090,6 +2104,11 @@ void tag_read_char(reader &th, uint8_t format, uint8_t major, uint8_t minor)
 
     if (major > 34 || major == 34 && minor >= 29)
         crawl_state.map = unmarshallString2(th);
+
+#if TAG_MAJOR_VERSION == 34
+    if (minor >= TAG_MINOR_FIX_EXPLORE_MODE)
+#endif
+        you.explore = unmarshallBoolean(th);
 }
 
 static void tag_read_you(reader &th)
@@ -2097,8 +2116,8 @@ static void tag_read_you(reader &th)
     int i,j;
     int count;
 
-    ASSERT(is_valid_species(you.species));
-    ASSERT(you.char_class < NUM_JOBS);
+    ASSERT_RANGE(you.species, 0, NUM_SPECIES);
+    ASSERT_RANGE(you.char_class, 0, NUM_JOBS);
     ASSERT_RANGE(you.experience_level, 1, 28);
     ASSERT(you.religion < NUM_GODS);
     ASSERT_RANGE(crawl_state.type, GAME_TYPE_UNSPECIFIED + 1, NUM_GAME_TYPE);
@@ -2224,6 +2243,12 @@ static void tag_read_you(reader &th)
     you.zot_points                = unmarshallInt(th);
     you.zigs_completed            = unmarshallInt(th);
     you.zig_max                   = unmarshallByte(th);
+#if TAG_MAJOR_VERSION == 34
+    if (th.getMinorVersion() < TAG_MINOR_TRACK_BANISHER)
+        you.banished_by = "";
+    else
+#endif
+        you.banished_by           = unmarshallString(th);
 
     you.hp_max_adj_temp           = unmarshallShort(th);
     you.hp_max_adj_perm           = unmarshallShort(th);
@@ -2706,6 +2731,10 @@ static void tag_read_you(reader &th)
         you.mutation[MUT_JUMP] = 0;
     }
 
+    // No minor version needed: all old felids should get MUT_PAWS.
+    if (you.species == SP_FELID && you.innate_mutation[MUT_PAWS] < 1)
+        you.mutation[MUT_PAWS] = you.innate_mutation[MUT_PAWS] = 1;
+
 #endif
 
     count = unmarshallUByte(th);
@@ -2733,6 +2762,14 @@ static void tag_read_you(reader &th)
     ASSERT(count <= NUM_GODS);
     for (i = 0; i < count; i++)
     {
+#if TAG_MAJOR_VERSION == 34
+        if (th.getMinorVersion() < TAG_MINOR_XP_PENANCE && i == GOD_GOZAG)
+        {
+            unmarshallUByte(th);
+            you.penance[i] = 0;
+            continue;
+        }
+#endif
         you.penance[i] = unmarshallUByte(th);
         ASSERT(you.penance[i] <= MAX_PENANCE);
     }
@@ -2798,8 +2835,34 @@ static void tag_read_you(reader &th)
     }
 #endif
 
-    you.exp_docked       = unmarshallInt(th);
-    you.exp_docked_total = unmarshallInt(th);
+#if TAG_MAJOR_VERSION == 34
+    if (th.getMinorVersion() < TAG_MINOR_XP_PENANCE)
+    {
+        for (i = 0; i < NUM_GODS; i++)
+        {
+            if (i == GOD_ASHENZARI)
+                you.exp_docked[i] = unmarshallInt(th);
+            else
+                you.exp_docked[i] = 0;
+        }
+        for (i = 0; i < NUM_GODS; i++)
+        {
+            if (i == GOD_ASHENZARI)
+                you.exp_docked_total[i] = unmarshallInt(th);
+            else
+                you.exp_docked_total[i] = 0;
+        }
+    }
+    else
+    {
+#endif
+    for (i = 0; i < count; i++)
+        you.exp_docked[i] = unmarshallInt(th);
+    for (i = 0; i < count; i++)
+        you.exp_docked_total[i] = unmarshallInt(th);
+#if TAG_MAJOR_VERSION == 34
+    }
+#endif
 
     // elapsed time
     you.elapsed_time   = unmarshallInt(th);
@@ -3866,19 +3929,13 @@ void unmarshallItem(reader &th, item_def &item)
             item.special = SPWPN_FLAMING;
     }
 
-    if (item.is_type(OBJ_MISCELLANY, MISC_HORN_OF_GERYON)
-        && th.getMinorVersion() < TAG_MINOR_HORN_GERYON_CHANGE)
-    {
-        item.evoker_debt = 0;
-    }
-
     // Rescale old MR (range 35-99) to new discrete steps (40/80/120)
     // Negative MR was only supposed to exist for Folly, but paranoia.
     if (th.getMinorVersion() < TAG_MINOR_MR_ITEM_RESCALE
         && is_artefact(item)
-        && artefact_wpn_property(item, ARTP_MAGIC))
+        && artefact_property(item, ARTP_MAGIC))
     {
-        int prop_mr = artefact_wpn_property(item, ARTP_MAGIC);
+        int prop_mr = artefact_property(item, ARTP_MAGIC);
         if (prop_mr > 99)
             artefact_set_property(item, ARTP_MAGIC, 3);
         else if (prop_mr > 79)
@@ -3894,9 +3951,9 @@ void unmarshallItem(reader &th, item_def &item)
     // Rescale stealth (range 10..79 and -10..-98) to discrete steps (+-50/100)
     if (th.getMinorVersion() < TAG_MINOR_STEALTH_RESCALE && is_artefact(item))
     {
-        if (artefact_wpn_property(item, ARTP_STEALTH))
+        if (artefact_property(item, ARTP_STEALTH))
         {
-            int prop_st = artefact_wpn_property(item, ARTP_STEALTH);
+            int prop_st = artefact_property(item, ARTP_STEALTH);
             if (prop_st > 60)
                 artefact_set_property(item, ARTP_STEALTH, 2);
             else if (prop_st < -70)
@@ -3908,7 +3965,7 @@ void unmarshallItem(reader &th, item_def &item)
         }
 
         // Remove fast metabolism property
-        if (artefact_wpn_property(item, ARTP_METABOLISM))
+        if (artefact_property(item, ARTP_METABOLISM))
         {
             artefact_set_property(item, ARTP_METABOLISM, 0);
             artefact_set_property(item, ARTP_STEALTH, -1);
@@ -3974,8 +4031,8 @@ void unmarshallItem(reader &th, item_def &item)
 
         if (item.props.exists(ARTEFACT_PROPS_KEY))
         {
-            acc = artefact_wpn_property(item, ARTP_ACCURACY);
-            dam = artefact_wpn_property(item, ARTP_SLAYING);
+            acc = artefact_property(item, ARTP_ACCURACY);
+            dam = artefact_property(item, ARTP_SLAYING);
             slay = dam < 0 ? dam : max(acc, dam);
 
             artefact_set_property(item, ARTP_SLAYING, slay);
@@ -4081,6 +4138,29 @@ void unmarshallItem(reader &th, item_def &item)
        // Items we've dropped or thrown have been handled already.
        item.flags |= ISFLAG_HANDLED;
     }
+
+    if (th.getMinorVersion() < TAG_MINOR_UNSTACKABLE_EVOKERS
+        && is_xp_evoker(item))
+    {
+        item.quantity = 1;
+    }
+
+    if (th.getMinorVersion() < TAG_MINOR_NO_NEGATIVE_VULN
+        && is_artefact(item)
+        && artefact_property(item, ARTP_NEGATIVE_ENERGY))
+    {
+        if (artefact_property(item, ARTP_NEGATIVE_ENERGY) < 0)
+            artefact_set_property(item, ARTP_NEGATIVE_ENERGY, 0);
+    }
+
+    if (th.getMinorVersion() < TAG_MINOR_NO_RPOIS_MINUS
+        && is_artefact(item)
+        && artefact_property(item, ARTP_POISON))
+    {
+        if (artefact_property(item, ARTP_POISON) < 0)
+            artefact_set_property(item, ARTP_POISON, 0);
+    }
+
 #endif
 
     if (is_unrandom_artefact(item))
@@ -4206,6 +4286,11 @@ void unmarshallMapCell(reader &th, map_cell& cell)
         && player_in_branch(BRANCH_LABYRINTH))
     {
         feature = DNGN_EXIT_LABYRINTH;
+    }
+    if (feature == DNGN_DEEP_WATER && player_in_branch(BRANCH_SHOALS)
+        && th.getMinorVersion() < TAG_MINOR_SHOALS_LITE)
+    {
+        feature = DNGN_SHALLOW_WATER;
     }
 #else
         feature = unmarshallFeatureType(th);
@@ -4864,6 +4949,11 @@ static void tag_read_level(reader &th)
                 && player_in_branch(BRANCH_LABYRINTH))
             {
                 grd[i][j] = DNGN_EXIT_LABYRINTH;
+            }
+            if (feat == DNGN_DEEP_WATER && player_in_branch(BRANCH_SHOALS)
+                && th.getMinorVersion() < TAG_MINOR_SHOALS_LITE)
+            {
+                grd[i][j] = DNGN_SHALLOW_WATER;
             }
 #endif
 

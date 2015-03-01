@@ -773,7 +773,7 @@ static void _sdump_skills(dump_params &par)
 // Return string of the i-th spell type, with slash if required
 //
 //---------------------------------------------------------------
-static string spell_type_shortname(int spell_class, bool slash)
+static string spell_type_shortname(spschool_flag_type spell_class, bool slash)
 {
     string ret;
 
@@ -851,9 +851,10 @@ static void _sdump_spells(dump_params &par)
 
                 for (int i = 0; i <= SPTYP_LAST_EXPONENT; i++)
                 {
-                    if (spell_typematch(spell, 1 << i))
+                    const auto bit = spschools_type::exponent(i);
+                    if (spell_typematch(spell, bit))
                     {
-                        spell_line += spell_type_shortname(1 << i, already);
+                        spell_line += spell_type_shortname(bit, already);
                         already = true;
                     }
                 }
@@ -864,9 +865,7 @@ static void _sdump_spells(dump_params &par)
 
                 spell_line = chop_string(spell_line, 54);
 
-                char* failure = failure_rate_to_string(spell_fail(spell));
-                spell_line += failure;
-                free(failure);
+                spell_line += failure_rate_to_string(raw_spell_fail(spell));
 
                 spell_line = chop_string(spell_line, 66);
 
@@ -1125,9 +1124,9 @@ static string _describe_action_subtype(caction_type type, int subtype)
 #if TAG_MAJOR_VERSION == 34
         case EVOC_MISC:
             return "Miscellaneous";
-#endif
-        case EVOC_TOME:
+        case EVOC_BUGGY_TOME:
             return "tome";
+#endif
         default:
             return "Error";
         }

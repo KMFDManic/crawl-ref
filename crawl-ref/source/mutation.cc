@@ -21,6 +21,7 @@
 #include "coordit.h"
 #include "dactions.h"
 #include "delay.h"
+#include "english.h"
 #include "env.h"
 #include "godabil.h"
 #include "godpassive.h"
@@ -150,7 +151,7 @@ equipment_type beastly_slot(int mut)
 
 static bool _mut_has_use(const mutation_def &mut, mut_flag_type use)
 {
-    return mut.uses & use;
+    return bool(mut.uses & use);
 }
 
 #define MUT_BAD(mut) _mut_has_use((mut), MUTFLAG_BAD)
@@ -189,7 +190,7 @@ void init_mut_index()
         mut_index[mut] = i;
         for (int mt = 0; mt <= MUTFLAG_LAST_EXPONENT; mt++)
         {
-            const auto flag = static_cast<mut_flag_type>(1 << mt);
+            const auto flag = mut_flags_type::exponent(mt);
             if (_mut_has_use(mut_data[i], flag))
                 total_weight[flag] += _mut_weight(mut_data[i], flag);
         }
@@ -281,6 +282,10 @@ mutation_activity_type mutation_activity_level(mutation_type mut)
             break;
         }
     }
+
+    //XXX: Should this make claws inactive too?
+    if (you.form == TRAN_BLADE_HANDS && mut == MUT_PAWS)
+        return MUTACT_INACTIVE;
 
     return MUTACT_FULL;
 }
@@ -499,8 +504,6 @@ string describe_mutations(bool center_title)
     case SP_FELID:
         result += "You cannot wear armour.\n";
         result += "You are incapable of wielding weapons or throwing items.\n";
-        result += _annotate_form_based("Your paws have sharp claws.",
-            !form_keeps_mutations() || you.form == TRAN_BLADE_HANDS);
         have_any = true;
         break;
 
@@ -508,7 +511,8 @@ string describe_mutations(bool center_title)
         result += "You cannot wear most types of armour.\n";
         result += "You are amphibious.\n";
         result += _annotate_form_based(
-            "You can wear up to eight rings at the same time.",
+            make_stringf("You can wear up to %s rings at the same time.",
+                number_in_words(you.has_usable_tentacles(false)).c_str()),
             !get_form()->slot_available(EQ_RING_EIGHT));
         result += _annotate_form_based(
             "You can use your tentacles to constrict many enemies at once.",
@@ -750,7 +754,7 @@ static void _display_vampire_attributes()
         {"Spell hunger         ", "full       ", "full    ", "full      ", "halved   ", "none     ", "none  "},
 
         {"\n<w>Resistances</w>\n"
-         "Poison resistance    ", "           ", "        ", "          ", " +       ", " +       ", " +    "},
+         "Poison resistance    ", "           ", "        ", "          ", " +       ", " +       ", "immune"},
 
         {"Cold resistance      ", "           ", "        ", "          ", " +       ", " ++      ", " ++   "},
 
@@ -1463,12 +1467,9 @@ bool mutate(mutation_type which_mutation, const string &reason, bool failMsg,
         // than divine protection.
         if (!god_gift && _resist_mutation(mutclass, beneficial))
         {
-            if (_resist_mutation(mutclass, beneficial))
-            {
-                if (failMsg)
-                    mprf(MSGCH_MUTATION, "You feel odd for a moment.");
-                return false;
-            }
+            if (failMsg)
+                mprf(MSGCH_MUTATION, "You feel odd for a moment.");
+            return false;
         }
 
         // Zin's protection.
@@ -1741,9 +1742,7 @@ bool mutate(mutation_type which_mutation, const string &reason, bool failMsg,
         {
             you.temp_mutation[mutat]++;
             you.attribute[ATTR_TEMP_MUTATIONS]++;
-            you.attribute[ATTR_TEMP_MUT_XP] =
-                    min(you.experience_level, 17)
-                    * (500 + roll_dice(5, 500)) / 17;
+            you.attribute[ATTR_TEMP_MUT_XP] = temp_mutation_roll();
         }
 
         if (you.hp <= 0)
@@ -2444,6 +2443,11 @@ bool temp_mutate(mutation_type which_mut, const string &reason)
 {
     return mutate(which_mut, reason, false, false, false, false,
                   MUTCLASS_TEMPORARY, false);
+}
+
+int temp_mutation_roll()
+{
+    return min(you.experience_level, 17) * (500 + roll_dice(5, 500)) / 17;
 }
 
 /**

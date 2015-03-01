@@ -106,6 +106,10 @@ static tileidx_t _tileidx_trap(trap_type type)
         return TILE_DNGN_TRAP_TELEPORT;
     case TRAP_TELEPORT_PERMANENT:
         return TILE_DNGN_TRAP_TELEPORT_PERMANENT;
+    case TRAP_SHADOW:
+        return TILE_DNGN_TRAP_SHADOW;
+    case TRAP_SHADOW_DORMANT:
+        return TILE_DNGN_TRAP_SHADOW_DORMANT;
     case TRAP_ALARM:
         return TILE_DNGN_TRAP_ALARM;
     case TRAP_BLADE:
@@ -166,7 +170,7 @@ static tileidx_t _tileidx_shop(coord_def where)
     }
 }
 
-static tileidx_t _tileidx_feature_base(dungeon_feature_type feat)
+tileidx_t tileidx_feature_base(dungeon_feature_type feat)
 {
     switch (feat)
     {
@@ -232,6 +236,10 @@ static tileidx_t _tileidx_feature_base(dungeon_feature_type feat)
         return TILE_DNGN_TRAP_SHAFT;
     case DNGN_TRAP_WEB:
         return TILE_DNGN_TRAP_WEB;
+    case DNGN_TRAP_SHADOW:
+        return TILE_DNGN_TRAP_SHADOW;
+    case DNGN_TRAP_SHADOW_DORMANT:
+        return TILE_DNGN_TRAP_SHADOW_DORMANT;
     case DNGN_TELEPORTER:
         return TILE_DNGN_TRAP_GOLUBRIA;
     case DNGN_ENTER_SHOP:
@@ -488,7 +496,10 @@ tileidx_t tileidx_feature(const coord_def &gc)
     switch (feat)
     {
     case DNGN_FLOOR:
-        if (player_in_branch(BRANCH_SLIME))
+        // branches that can have slime walls (premature optimization?)
+        if (player_in_branch(BRANCH_SLIME)
+            || player_in_branch(BRANCH_TEMPLE)
+            || player_in_branch(BRANCH_LAIR))
         {
             bool slimy = false;
             for (adjacent_iterator ai(gc); ai; ++ai)
@@ -528,7 +539,7 @@ tileidx_t tileidx_feature(const coord_def &gc)
             unsigned rc = real_colour(colour, gc);
             return tile_dngn_coloured(base, rc) + spec; // XXX
         }
-        return _tileidx_feature_base(feat);
+        return tileidx_feature_base(feat);
     }
 
     case DNGN_TRAP_MECHANICAL:
@@ -593,7 +604,7 @@ tileidx_t tileidx_feature(const coord_def &gc)
             return t;
         }
     default:
-        return _tileidx_feature_base(feat);
+        return tileidx_feature_base(feat);
     }
 }
 
@@ -620,7 +631,7 @@ void tileidx_out_of_los(tileidx_t *fg, tileidx_t *bg, tileidx_t *cloud, const co
 
     // Override terrain for magic mapping.
     if (!cell.seen() && env.map_knowledge(gc).mapped())
-        *bg = _tileidx_feature_base(cell.feat());
+        *bg = tileidx_feature_base(cell.feat());
     else
         *bg = mem_bg;
     *bg |= tileidx_unseen_flag(gc);
@@ -1429,12 +1440,12 @@ tileidx_t tileidx_monster_base(int type, bool in_water, int colour, int number,
         return TILEP_MONS_WRETCHED_STAR;
 
     // flying insects ('y')
-    case MONS_YELLOW_WASP:
-        return TILEP_MONS_YELLOW_WASP;
+    case MONS_WASP:
+        return TILEP_MONS_WASP;
     case MONS_VAMPIRE_MOSQUITO:
         return TILEP_MONS_VAMPIRE_MOSQUITO;
-    case MONS_RED_WASP:
-        return TILEP_MONS_RED_WASP;
+    case MONS_HORNET:
+        return TILEP_MONS_HORNET;
     case MONS_GHOST_MOTH:
         return TILEP_MONS_GHOST_MOTH;
     case MONS_MOTH_OF_WRATH:
@@ -3738,9 +3749,9 @@ static tileidx_t _tileidx_corpse(const item_def &item)
     // flying insects ('y')
     case MONS_VAMPIRE_MOSQUITO:
         return TILE_CORPSE_VAMPIRE_MOSQUITO;
-    case MONS_YELLOW_WASP:
+    case MONS_WASP:
         return TILE_CORPSE_YELLOW_WASP;
-    case MONS_RED_WASP:
+    case MONS_HORNET:
         return TILE_CORPSE_RED_WASP;
     case MONS_GHOST_MOTH:
         return TILE_CORPSE_GHOST_MOTH;
@@ -3949,6 +3960,10 @@ static tileidx_t _tileidx_corpse(const item_def &item)
     case MONS_ELECTRIC_EEL:
         return TILE_CORPSE_ELECTRIC_EEL;
 
+    // lava monsters
+    case MONS_LAVA_SNAKE:
+        return TILE_CORPSE_LAVA_SNAKE;
+
     default:
         return TILE_ERROR;
     }
@@ -3971,7 +3986,7 @@ static tileidx_t _tileidx_rune(const item_def &item)
     case RUNE_GLOORX_VLOQ: return TILE_MISC_RUNE_GLOORX_VLOQ;
 
     case RUNE_DEMONIC:     return TILE_MISC_RUNE_DEMONIC
-        + ((uint32_t)item.special) % tile_main_count(TILE_MISC_RUNE_DEMONIC);
+        + ((uint32_t)item.rnd) % tile_main_count(TILE_MISC_RUNE_DEMONIC);
     case RUNE_ABYSSAL:     return TILE_MISC_RUNE_ABYSS;
 
     case RUNE_SNAKE:       return TILE_MISC_RUNE_SNAKE;
@@ -3990,6 +4005,36 @@ static tileidx_t _tileidx_rune(const item_def &item)
 
 static tileidx_t _tileidx_misc(const item_def &item)
 {
+    if (is_deck(item, true))
+    {
+        tileidx_t ch = TILE_ERROR;
+        switch (item.special)
+        {
+            case DECK_RARITY_LEGENDARY:
+                ch = TILE_MISC_DECK_LEGENDARY;
+                break;
+            case DECK_RARITY_RARE:
+                ch = TILE_MISC_DECK_RARE;
+                break;
+            case DECK_RARITY_COMMON:
+            default:
+                ch = TILE_MISC_DECK;
+                break;
+        }
+
+        if (item.flags & ISFLAG_KNOW_TYPE
+#if TAG_MAJOR_VERSION == 34
+            && item.sub_type != MISC_DECK_OF_ODDITIES // non-contiguous
+#endif
+            )
+        {
+            // NOTE: order of tiles must be identical to order of decks.
+            int offset = item.sub_type - MISC_DECK_OF_ESCAPE + 1;
+            ch += offset;
+        }
+        return ch;
+    }
+
     switch (item.sub_type)
     {
 #if TAG_MAJOR_VERSION == 34
@@ -4034,41 +4079,6 @@ static tileidx_t _tileidx_misc(const item_def &item)
     case MISC_PHANTOM_MIRROR:
         return TILE_MISC_PHANTOM_MIRROR;
 
-    case MISC_DECK_OF_ESCAPE:
-    case MISC_DECK_OF_DESTRUCTION:
-#if TAG_MAJOR_VERSION == 34
-    case MISC_DECK_OF_DUNGEONS:
-#endif
-    case MISC_DECK_OF_SUMMONING:
-    case MISC_DECK_OF_WONDERS:
-    case MISC_DECK_OF_PUNISHMENT:
-    case MISC_DECK_OF_WAR:
-    case MISC_DECK_OF_CHANGES:
-    case MISC_DECK_OF_DEFENCE:
-    case MISC_DECK_UNKNOWN:
-    {
-        tileidx_t ch = TILE_ERROR;
-        switch (item.special)
-        {
-        case DECK_RARITY_LEGENDARY:
-            ch = TILE_MISC_DECK_LEGENDARY;
-            break;
-        case DECK_RARITY_RARE:
-            ch = TILE_MISC_DECK_RARE;
-            break;
-        case DECK_RARITY_COMMON:
-        default:
-            ch = TILE_MISC_DECK;
-            break;
-        }
-        if (item.flags & ISFLAG_KNOW_TYPE)
-        {
-            // NOTE: order of tiles must be identical to order of decks.
-            int offset = item.sub_type - MISC_DECK_OF_ESCAPE + 1;
-            ch += offset;
-        }
-        return ch;
-    }
     case MISC_RUNE_OF_ZOT:
         return _tileidx_rune(item);
 
@@ -4194,17 +4204,17 @@ tileidx_t tileidx_item(const item_def &item)
         switch (rnd % NDSC_BOOK_PRI)
         {
         case 0:
-            return TILE_BOOK_LEATHER_OFFSET
-                   + rnd % tile_main_count(TILE_BOOK_LEATHER_OFFSET);
         case 1:
-            return TILE_BOOK_METAL_OFFSET
-                   + rnd % tile_main_count(TILE_BOOK_METAL_OFFSET);
-        case 2:
-            return TILE_BOOK_PAPYRUS;
-        case 3:
-        case 4:
         default:
             return TILE_BOOK_PAPER_OFFSET + colour;
+        case 2:
+            return TILE_BOOK_LEATHER_OFFSET
+                   + rnd % tile_main_count(TILE_BOOK_LEATHER_OFFSET);
+        case 3:
+            return TILE_BOOK_METAL_OFFSET
+                   + rnd % tile_main_count(TILE_BOOK_METAL_OFFSET);
+        case 4:
+            return TILE_BOOK_PAPYRUS;
         }
 
     case OBJ_STAVES:
@@ -4799,7 +4809,6 @@ tileidx_t tileidx_spell(spell_type spell)
     case SPELL_SUMMON_FOREST:            return TILEG_SUMMON_FOREST;
     case SPELL_MONSTROUS_MENAGERIE:      return TILEG_MONSTROUS_MENAGERIE;
     case SPELL_SUMMON_MANA_VIPER:        return TILEG_SUMMON_MANA_VIPER;
-    case SPELL_FORCEFUL_DISMISSAL:       return TILEG_FORCEFUL_DISMISSAL;
     case SPELL_SPELLFORGED_SERVITOR:     return TILEG_SPELLFORGED_SERVITOR;
 
     // Necromancy
@@ -5100,6 +5109,8 @@ tileidx_t tileidx_command(const command_type cmd)
         return TILEG_CMD_EDIT_PLAYER_TILE;
     case CMD_DISPLAY_COMMANDS:
         return TILEG_CMD_DISPLAY_COMMANDS;
+    case CMD_LOOKUP_HELP:
+        return TILEG_CMD_LOOKUP_HELP;
     case CMD_CHARACTER_DUMP:
         return TILEG_CMD_CHARACTER_DUMP;
     case CMD_DISPLAY_INVENTORY:
@@ -5335,16 +5346,14 @@ tileidx_t tileidx_ability(const ability_type ability)
     // Elyvilon
     case ABIL_ELYVILON_LIFESAVING:
         return TILEG_ABILITY_ELYVILON_DIVINE_PROTECTION;
-    case ABIL_ELYVILON_LESSER_HEALING_SELF:
-        return TILEG_ABILITY_ELYVILON_LESSER_SELF_HEALING;
-    case ABIL_ELYVILON_LESSER_HEALING_OTHERS:
+    case ABIL_ELYVILON_LESSER_HEALING:
         return TILEG_ABILITY_ELYVILON_LESSER_HEALING;
     case ABIL_ELYVILON_PURIFICATION:
         return TILEG_ABILITY_ELYVILON_PURIFICATION;
-    case ABIL_ELYVILON_GREATER_HEALING_SELF:
-        return TILEG_ABILITY_ELYVILON_GREATER_SELF_HEALING;
-    case ABIL_ELYVILON_GREATER_HEALING_OTHERS:
+    case ABIL_ELYVILON_GREATER_HEALING:
         return TILEG_ABILITY_ELYVILON_GREATER_HEALING;
+    case ABIL_ELYVILON_HEAL_OTHER:
+        return TILEG_ABILITY_ELYVILON_HEAL_OTHER;
     case ABIL_ELYVILON_DIVINE_VIGOUR:
         return TILEG_ABILITY_ELYVILON_DIVINE_VIGOUR;
     // Lugonu
@@ -5463,6 +5472,10 @@ tileidx_t tileidx_ability(const ability_type ability)
         return TILEG_ABILITY_RU_SACRIFICE_DURABILITY;
     case ABIL_RU_SACRIFICE_HAND:
         return TILEG_ABILITY_RU_SACRIFICE_HAND;
+    case ABIL_RU_SACRIFICE_EXPERIENCE:
+        return TILEG_ABILITY_RU_SACRIFICE_EXPERIENCE;
+    case ABIL_RU_SACRIFICE_SKILL:
+        return TILEG_ABILITY_RU_SACRIFICE_SKILL;
     case ABIL_RU_REJECT_SACRIFICES:
         return TILEG_ABILITY_RU_REJECT_SACRIFICES;
 

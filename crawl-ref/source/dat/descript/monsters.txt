@@ -861,9 +861,7 @@ A putrid undead mass of decaying flesh that spurts pestilent slime.
 death scarab
 
 A hideous swarming undead insect, exuding death and decay and feeding on the
-life energies of those unfortunate enough to encounter them. Their bites have
-the peculiar property of making their victims suffer even more greatly from
-unholy effects.
+life energies of those unfortunate enough to encounter them.
 %%%%
 death yak
 
@@ -1471,10 +1469,10 @@ hydra
 A great and nightmarish lacertilian beast. It has many heads, and the potential
 to grow many more!
 
-Hitting it with any cutting weapon bigger than a dagger or a quick blade risks
-lopping a head off, which, considering hydra's unique biology, is not what you
-want unless the blade is hot enough to cauterize the wound. Even a troll's
-claws may be enough to rip hydra heads.
+Hitting it with any bladed weapon bigger than a short blade risks lopping a
+head off, which, considering hydras' unique biology, is not what you want. Even
+a troll's claws are long enough to do the same. Only a weapon branded with
+flame will cauterize the wound and prevent more heads from growing.
 %%%%
 hyperactive ballistomycete
 
@@ -1555,8 +1553,8 @@ might.
 %%%%
 ironheart preserver
 
-Towering figures sheathed in heavy armour, preservers safeguard their allies by
-selflessly accepting a portion of the injuries inflicted upon them.
+Towering, muscular figures, preservers safeguard their allies by selflessly
+accepting a portion of the injuries inflicted upon them.
 %%%%
 jackal
 
@@ -2038,9 +2036,9 @@ red draconian
 
 A muscular red-scaled humanoid with a reptilian tail and small wings.
 %%%%
-red wasp
+hornet
 
-A huge red wasp with a viciously barbed stinger. Potent paralytic poison drips
+A huge hornet with a viciously barbed stinger. Potent paralytic poison drips
 from its tip.
 %%%%
 redback
@@ -2716,7 +2714,7 @@ yellow draconian
 
 A muscular yellow-scaled humanoid with a reptilian tail and small wings.
 %%%%
-yellow wasp
+wasp
 
 A giant wasp covered with thick plates of yellow chitinous armour. Its deadly
 venom can render most beings unable to move.
@@ -3208,7 +3206,7 @@ You see the unseen, you stare and they stare back. They whisper and laugh, they
 grin and cry, they leer at you with contempt and gaze at you in adoration. They
 are the observers, they are the judge of your worth and will decide your end.
 %%%%
-meat lost soul
+wretched soul
 
 A spectre, struggling to leave the mortal world it is incarcerated in. It
 drains life and unlife from all those it comes into contact with.

@@ -1514,6 +1514,25 @@ spret_type cast_irradiate(int powc, actor* who, bool fail)
                                " erupts in a fountain of uncontrolled magic!");
     }
 
+#ifndef USE_TILE
+    // this looks terrible in tiles. TODO: make a decent sprite
+    bolt beam;
+    beam.name = "irradiate";
+    beam.flavour = BEAM_VISUAL;
+    beam.set_agent(&you);
+    beam.colour = ETC_MUTAGENIC;
+    beam.glyph = dchar_glyph(DCHAR_EXPLOSION);
+    beam.range = 1;
+    beam.ex_size = 1;
+    beam.is_explosion = true;
+    beam.explode_delay = beam.explode_delay * 3 / 2;
+    beam.source = you.pos();
+    beam.target = you.pos();
+    beam.hit = AUTOMATIC_HIT;
+    beam.loudness = 0;
+    beam.explode(true, true);
+#endif
+
     apply_random_around_square(_irradiate_cell, who->pos(), true, powc, 8, who);
 
     if (who->is_player())
@@ -1930,9 +1949,21 @@ int discharge_monsters(coord_def where, int pow, int, actor *agent)
                                                  + (random2(pow) / 10));
 
     bolt beam;
-    beam.flavour = BEAM_ELECTRICITY; // used for mons_adjust_flavoured
+    beam.flavour    = BEAM_ELECTRICITY; // used for mons_adjust_flavoured
+    beam.glyph      = dchar_glyph(DCHAR_FIRED_ZAP);
+    beam.colour     = LIGHTBLUE;
+#ifdef USE_TILE
+    beam.tile_beam  = -1;
+#endif
+    beam.draw_delay = 0;
 
     dprf("Static discharge on (%d,%d) pow: %d", where.x, where.y, pow);
+    if (victim->is_player()
+        || victim->res_elec() <= 0
+        || victim->type == MONS_SHOCK_SERPENT)
+    {
+        beam.draw(where);
+    }
     if (victim->is_player())
     {
         mpr("You are struck by lightning.");
@@ -2028,7 +2059,9 @@ spret_type cast_discharge(int pow, bool fail)
 
     dprf("Arcs: %d Damage: %d", num_targs, dam);
 
-    if (dam == 0)
+    if (dam > 0)
+        scaled_delay(100);
+    else
     {
         if (coinflip())
             mpr("The air around you crackles with electrical energy.");
@@ -2661,7 +2694,7 @@ vector<bolt> get_spray_rays(const actor *caster, coord_def aim, int range,
 
     bolt base_beam;
 
-    base_beam.set_agent(const_cast<actor *>(caster));
+    base_beam.set_agent(caster);
     base_beam.attitude = caster->is_player() ? ATT_FRIENDLY
                                              : caster->as_monster()->attitude;
     base_beam.is_tracer = true;
@@ -3121,7 +3154,7 @@ spret_type cast_random_bolt(int pow, bolt& beam, bool fail)
 
 size_t shotgun_beam_count(int pow)
 {
-    return 1 + (pow - 5) / 3;
+    return 1 + stepdown((pow - 5) / 3, 5, ROUND_CLOSE);
 }
 
 spret_type cast_scattershot(const actor *caster, int pow, const coord_def &pos,

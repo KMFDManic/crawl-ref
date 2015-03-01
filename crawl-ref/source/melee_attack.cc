@@ -20,7 +20,6 @@
 #include "cloud.h"
 #include "coordit.h"
 #include "delay.h"
-#include "effects.h"
 #include "english.h"
 #include "env.h"
 #include "exercise.h"
@@ -80,6 +79,7 @@ melee_attack::melee_attack(actor *attk, actor *defn,
     cleaving(is_cleaving)
 {
     attack_occurred = false;
+    damage_brand = attacker->damage_brand(attack_number);
     init_attack(SK_UNARMED_COMBAT, attack_number);
     if (weapon && !using_weapon())
         wpn_skill = SK_FIGHTING;
@@ -89,7 +89,7 @@ melee_attack::melee_attack(actor *attk, actor *defn,
 
 bool melee_attack::can_reach()
 {
-    return (attk_type == AT_HIT && weapon && weapon_reach(*weapon))
+    return attk_type == AT_HIT && weapon && weapon_reach(*weapon) > REACH_NONE
            || attk_flavour == AF_REACH
            || attk_type == AT_REACH_STING;
 }
@@ -621,17 +621,15 @@ static void _hydra_devour(monster &victim)
     if (filling)
     {
         const int equiv_chunks =
-            1+random2(get_max_corpse_chunks(victim.type));
-        // XXX: consider capping nutrition at random2(CHUNK_BASE_NUTRITION)
-        // short of the next hunger level?
-        lessen_hunger(CHUNK_BASE_NUTRITION * equiv_chunks, false);
+            1 + random2(get_max_corpse_chunks(victim.type));
+        lessen_hunger(CHUNK_BASE_NUTRITION * equiv_chunks, false, max_hunger);
     }
 
     // healing
     if (!you.duration[DUR_DEATHS_DOOR])
     {
-        const int healing = 1 + victim.get_experience_level() * 3 / 2
-                              + random2(victim.get_experience_level() * 3 / 2);
+        const int healing = 1 + victim.get_experience_level() * 3 / 4
+                              + random2(victim.get_experience_level() * 3 / 4);
         you.heal(healing);
         calc_hp();
         mpr("You feel better.");
@@ -718,7 +716,7 @@ bool melee_attack::handle_phase_end()
 {
     if (!cleave_targets.empty())
     {
-        attack_cleave_targets(attacker, cleave_targets, attack_number,
+        attack_cleave_targets(*attacker, cleave_targets, attack_number,
                               effective_attack_number);
     }
 
@@ -894,7 +892,7 @@ bool melee_attack::attack()
     if (attacker->is_player()
         && weapon
         && is_artefact(*weapon)
-        && artefact_wpn_property(*weapon, ARTP_NOISES))
+        && artefact_property(*weapon, ARTP_NOISES))
     {
         noisy_equipment();
     }
@@ -926,7 +924,7 @@ void melee_attack::check_autoberserk()
             if (!is_artefact(*item))
                 continue;
 
-            if (x_chance_in_y(artefact_wpn_property(*item, ARTP_ANGRY), 100))
+            if (x_chance_in_y(artefact_property(*item, ARTP_ANGRY), 100))
             {
                 attacker->go_berserk(false);
                 return;
@@ -945,7 +943,7 @@ void melee_attack::check_autoberserk()
             if (!is_artefact(*item))
                 continue;
 
-            if (x_chance_in_y(artefact_wpn_property(*item, ARTP_ANGRY), 100))
+            if (x_chance_in_y(artefact_property(*item, ARTP_ANGRY), 100))
             {
                 attacker->go_berserk(false);
                 return;
@@ -1574,7 +1572,7 @@ void melee_attack::set_attack_verb()
     int weap_type = WPN_UNKNOWN;
 
     int damage_to_display = damage_done;
-    if (Options.lang == LANG_GRUNT)
+    if (Options.has_fake_lang(FLANG_GRUNT))
         damage_to_display = HIT_STRONG + 1;
 
     if (!weapon)
@@ -1620,17 +1618,21 @@ void melee_attack::set_attack_verb()
                 attack_verb = "spit";
                 verb_degree = "like the proverbial pig";
             }
-            else if (defender_genus == MONS_CRAB && Options.lang == LANG_GRUNT)
+            else if (defender_genus == MONS_CRAB
+                     && Options.has_fake_lang(FLANG_GRUNT))
             {
                 attack_verb = "attack";
                 verb_degree = "'s weak point";
             }
             else
             {
-                const char* pierce_desc[][2] = {{"spit", "like a pig"},
-                                                {"skewer", "like a kebab"},
-                                                {"stick", "like a pincushion"},
-                                                {"perforate", "like a sieve"}};
+                static const char * const pierce_desc[][2] =
+                {
+                    {"spit", "like a pig"},
+                    {"skewer", "like a kebab"},
+                    {"stick", "like a pincushion"},
+                    {"perforate", "like a sieve"}
+                };
                 const int choice = random2(ARRAYSZ(pierce_desc));
                 attack_verb = pierce_desc[choice][0];
                 verb_degree = pierce_desc[choice][1];
@@ -1658,19 +1660,27 @@ void melee_attack::set_attack_verb()
             attack_verb = "carve";
             verb_degree = "like the proverbial ham";
         }
+        else if (defender_genus == MONS_TENGU && one_chance_in(3))
+        {
+            attack_verb = "carve";
+            verb_degree = "like a turkey";
+        }
         else if ((defender_genus == MONS_YAK || defender_genus == MONS_YAKTAUR)
-                 && Options.lang == LANG_GRUNT)
+                 && Options.has_fake_lang(FLANG_GRUNT))
             attack_verb = "shave";
         else
         {
-            const char* pierce_desc[][2] = {{"open",    "like a pillowcase"},
-                                            {"slice",   "like a ripe choko"},
-                                            {"cut",     "into ribbons"},
-                                            {"carve",   "like a ham"},
-                                            {"chop",    "into pieces"}};
-            const int choice = random2(ARRAYSZ(pierce_desc));
-            attack_verb = pierce_desc[choice][0];
-            verb_degree = pierce_desc[choice][1];
+            static const char * const slice_desc[][2] =
+            {
+                {"open",    "like a pillowcase"},
+                {"slice",   "like a ripe choko"},
+                {"cut",     "into ribbons"},
+                {"carve",   "like a ham"},
+                {"chop",    "into pieces"}
+            };
+            const int choice = random2(ARRAYSZ(slice_desc));
+            attack_verb = slice_desc[choice][0];
+            verb_degree = slice_desc[choice][1];
         }
         break;
 
@@ -1691,14 +1701,17 @@ void melee_attack::set_attack_verb()
         }
         else
         {
-            const char* pierce_desc[][2] = {{"crush",   "like a grape"},
-                                            {"beat",    "like a drum"},
-                                            {"hammer",  "like a gong"},
-                                            {"pound",   "like an anvil"},
-                                            {"flatten", "like a pancake"}};
-            const int choice = random2(ARRAYSZ(pierce_desc));
-            attack_verb = pierce_desc[choice][0];
-            verb_degree = pierce_desc[choice][1];
+            static const char * const bludgeon_desc[][2] =
+            {
+                {"crush",   "like a grape"},
+                {"beat",    "like a drum"},
+                {"hammer",  "like a gong"},
+                {"pound",   "like an anvil"},
+                {"flatten", "like a pancake"}
+            };
+            const int choice = random2(ARRAYSZ(bludgeon_desc));
+            attack_verb = bludgeon_desc[choice][0];
+            verb_degree = bludgeon_desc[choice][1];
         }
         break;
 
@@ -1778,11 +1791,13 @@ void melee_attack::set_attack_verb()
             }
             else
             {
-                const char* punch_desc[][2] =
-                {{"pound",     "into fine dust"},
+                static const char * const punch_desc[][2] =
+                {
+                    {"pound",     "into fine dust"},
                     {"pummel",    "like a punching bag"},
                     {"pulverise", ""},
-                    {"squash",    "like an ant"}};
+                    {"squash",    "like an ant"}
+                };
                 const int choice = random2(ARRAYSZ(punch_desc));
                 // XXX: could this distinction work better?
                 if (choice == 0
@@ -1843,9 +1858,7 @@ void melee_attack::player_weapon_upsets_god()
         }
     }
     else if (weapon && weapon->is_type(OBJ_STAVES, STAFF_FIRE))
-    {
         did_god_conduct(DID_FIRE, 1);
-    }
 }
 
 /* Apply player-specific effects as well as brand damage.
@@ -2177,12 +2190,12 @@ void melee_attack::attacker_sustain_passive_damage()
     if (weap && !avatar)
     {
         if (x_chance_in_y(acid_strength + 1, 30))
-            corrode_actor(attacker);
+            attacker->corrode_equipment();
     }
     else
     {
         if (attacker->is_player())
-            mprf("Your %s burn!", you.hand_name(true).c_str());
+            mpr(you.hands_act("burn", "!"));
         else
         {
             simple_monster_message(attacker->as_monster(),
@@ -2378,7 +2391,7 @@ void melee_attack::player_stab_check()
 bool melee_attack::player_good_stab()
 {
     return wpn_skill == SK_SHORT_BLADES
-           || you.species == SP_FELID
+           || player_mutation_level(MUT_PAWS)
            || player_equip_unrand(UNRAND_BOOTS_ASSASSIN)
               && (!weapon || is_melee_weapon(*weapon));
 }
@@ -2766,6 +2779,8 @@ void melee_attack::mons_apply_attack_flavour()
     if (flavour == AF_CHAOS)
         flavour = random_chaos_attack_flavour();
 
+    // Note that if damage_done == 0 then this code won't be reached
+    // unless the flavour is in _flavour_triggers_damageless.
     switch (flavour)
     {
     default:
@@ -2864,38 +2879,9 @@ void melee_attack::mons_apply_attack_flavour()
         defender->expose_to_element(BEAM_ELECTRICITY, 2);
         break;
 
+        // Combines drain speed and vampiric.
     case AF_SCARAB:
-        if (coinflip())
-        {
-            if (defender->is_player())
-            {
-                if (you.holiness() == MH_NATURAL
-                    && !you.duration[DUR_NEGATIVE_VULN])
-                {
-                    mpr("You feel yourself grow more vulnerable to negative"
-                        " energy.");
-                    you.increase_duration(DUR_NEGATIVE_VULN,
-                                          random_range(20, 30));
-                }
-            }
-            else
-            {
-                monster* mon = defender->as_monster();
-                if (mon->holiness() == MH_NATURAL
-                    && !mon->has_ench(ENCH_NEGATIVE_VULN)
-                    && mon->add_ench(
-                           mon_enchant(ENCH_NEGATIVE_VULN, 0, attacker,
-                                       random_range(20, 30) * BASELINE_DELAY)))
-                {
-                    simple_monster_message(mon, " grows more vulnerable to"
-                                                " negative energy.");
-                }
-            }
-        }
-
-        if (coinflip())
-            drain_defender();
-        else
+        if (x_chance_in_y(3, 5))
             drain_defender_speed();
 
         // deliberate fall-through
@@ -2909,7 +2895,7 @@ void melee_attack::mons_apply_attack_flavour()
         if (defender->is_summoned())
             break;
 
-        if (x_chance_in_y(defender->res_negative_energy(), 3))
+        if (defender->res_negative_energy())
             break;
 
         if (defender->stat_hp() < defender->stat_maxhp())
@@ -2928,8 +2914,7 @@ void melee_attack::mons_apply_attack_flavour()
     case AF_DRAIN_STR:
     case AF_DRAIN_INT:
     case AF_DRAIN_DEX:
-        if ((one_chance_in(20) || (damage_done > 0 && one_chance_in(3)))
-            && defender->res_negative_energy() < random2(4))
+        if (one_chance_in(20) || one_chance_in(3))
         {
             stat_type drained_stat = (flavour == AF_DRAIN_STR ? STAT_STR :
                                       flavour == AF_DRAIN_INT ? STAT_INT
@@ -2942,8 +2927,7 @@ void melee_attack::mons_apply_attack_flavour()
         if (defender->holiness() == MH_UNDEAD)
             break;
 
-        if (one_chance_in(20) || damage_done > 0)
-            defender->make_hungry(you.hunger / 4, false);
+        defender->make_hungry(you.hunger / 4, false);
         break;
 
     case AF_BLINK:
@@ -3001,7 +2985,7 @@ void melee_attack::mons_apply_attack_flavour()
             break;
         }
 
-        if (attacker->type == MONS_RED_WASP || one_chance_in(3))
+        if (attacker->type == MONS_HORNET || one_chance_in(3))
         {
             int dmg = random_range(attacker->get_hit_dice() * 3 / 2,
                                    attacker->get_hit_dice() * 5 / 2);
@@ -3009,10 +2993,10 @@ void melee_attack::mons_apply_attack_flavour()
         }
 
         int paralyse_roll = (damage_done > 4 ? 3 : 20);
-        if (attacker->type == MONS_YELLOW_WASP)
+        if (attacker->type == MONS_WASP)
             paralyse_roll += 3;
 
-        const int flat_bonus  = attacker->type == MONS_RED_WASP ? 1 : 0;
+        const int flat_bonus  = attacker->type == MONS_HORNET ? 1 : 0;
         const bool strong_result = one_chance_in(paralyse_roll);
 
         if (strong_result && defender->res_poison() <= 0)
@@ -3029,7 +3013,7 @@ void melee_attack::mons_apply_attack_flavour()
 
     case AF_CORRODE:
         if (defender->slot_item(EQ_BODY_ARMOUR))
-            corrode_actor(defender, atk_name(DESC_THE).c_str());
+            defender->corrode_equipment(atk_name(DESC_THE).c_str());
         break;
 
     case AF_DISTORT:
@@ -3576,8 +3560,7 @@ bool melee_attack::do_knockback(bool trample)
 
     if (!x_chance_in_y(size_diff + 3, 6)
         // need a valid tile
-        || !feat_has_solid_floor(grd(new_pos))
-           && !defender->is_habitable_feat(grd(new_pos))
+        || !defender->is_habitable_feat(grd(new_pos))
         // don't trample into a monster - or do we want to cause a chain
         // reaction here?
         || actor_at(new_pos)
@@ -3631,15 +3614,16 @@ void melee_attack::cleave_setup()
 
     // We need to get the list of the remaining potential targets now because
     // if the main target dies, its position will be lost.
-    get_cleave_targets(attacker, defender->pos(), cleave_targets, attack_number);
+    get_cleave_targets(*attacker, defender->pos(), cleave_targets,
+                       attack_number);
     // We're already attacking this guy.
     cleave_targets.pop_front();
 }
 
-// cleave damage modifier for additional attacks: 75% of base damage
+// cleave damage modifier for additional attacks: 70% of base damage
 int melee_attack::cleave_damage_mod(int dam)
 {
-    return div_rand_round(dam * 3, 4);
+    return div_rand_round(dam * 7, 10);
 }
 
 void melee_attack::chaos_affect_actor(actor *victim)

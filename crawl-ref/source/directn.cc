@@ -610,8 +610,8 @@ void full_describe_view()
     }
 
     title = "Visible " + title;
-    string title1 = title + " (select to view/travel, '!' to examine):";
-    title += " (select for more detail, '!' to view/travel):";
+    string title1 = title + " (select to target/travel, '!' to examine):";
+    title += " (select to examine, '!' to target/travel):";
 
     desc_menu.set_title(new MenuEntry(title, MEL_TITLE), false);
     desc_menu.set_title(new MenuEntry(title1, MEL_TITLE));
@@ -1958,10 +1958,8 @@ bool direction_chooser::do_main_loop()
         {
             const bool was_excluded = is_exclude_root(target());
             cycle_exclude_radius(target());
-#ifdef USE_TILE
             // XXX: abusing need_beam_redraw to force viewwindow call.
             need_beam_redraw   = true;
-#endif
             const bool is_excluded = is_exclude_root(target());
             if (!was_excluded && is_excluded)
                 mpr("Placed new exclusion.");
@@ -2447,11 +2445,13 @@ static bool _want_target_monster(const monster *mon, int mode)
     return !mons_class_flag(mon->type, M_NO_EXP_GAIN);
 }
 
+#ifdef CLUA_BINDINGS
 static bool _tobool(maybe_bool mb)
 {
     ASSERT(mb != MB_MAYBE);
     return mb == MB_TRUE;
 }
+#endif
 
 static bool _find_monster(const coord_def& where, int mode, bool need_path,
                            int range, targetter *hitfunc)
@@ -2946,7 +2946,7 @@ void describe_floor()
 
     mprf(channel, "%s%s here.", prefix, feat.c_str());
     if (grid == DNGN_ENTER_LABYRINTH)
-        mprf(MSGCH_EXAMINE, "Beware, the Minotaur awaits!");
+        mprf(MSGCH_EXAMINE, "Beware, the minotaur awaits!");
 }
 
 static string _base_feature_desc(dungeon_feature_type grid, trap_type trap)

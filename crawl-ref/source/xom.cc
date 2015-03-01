@@ -9,6 +9,7 @@
 
 #include <algorithm>
 
+#include "abyss.h"
 #include "acquire.h"
 #include "act-iter.h"
 #include "areas.h"
@@ -21,7 +22,6 @@
 #endif
 #include "delay.h"
 #include "directn.h"
-#include "effects.h"
 #include "english.h"
 #include "env.h"
 #include "goditem.h"
@@ -336,9 +336,9 @@ void xom_tick()
             you.piety = HALF_MAX_PIETY + (good ? size : -size);
         }
 #ifdef DEBUG_XOM
-        snprintf(info, INFO_SIZE, "xom_tick(), delta: %d, piety: %d",
-                 delta, you.piety);
-        take_note(Note(NOTE_MESSAGE, 0, 0, info), true);
+        const string note = make_stringf("xom_tick(), delta: %d, piety: %d",
+                                         delta, you.piety);
+        take_note(Note(NOTE_MESSAGE, 0, 0, note), true);
 #endif
 
         // ...but he gets bored...
@@ -593,10 +593,8 @@ static int _xom_makes_you_cast_random_spell(int sever, int tension,
          spell, spellenum);
 #endif
 
-    static char spell_buf[100];
-    snprintf(spell_buf, sizeof(spell_buf), "cast spell '%s'",
-             spell_title(spell));
-    take_note(Note(NOTE_XOM_EFFECT, you.piety, tension, spell_buf), true);
+    const string note = make_stringf("cast spell '%s'", spell_title(spell));
+    take_note(Note(NOTE_XOM_EFFECT, you.piety, tension, note), true);
 
     your_spells(spell, sever, false);
     return result;
@@ -1014,7 +1012,7 @@ static void _do_chaos_upgrade(item_def &item, const monster* mon)
         artefact_set_property(item, ARTP_BRAND, brand);
 
         if (seen)
-            artefact_wpn_learn_prop(item, ARTP_BRAND);
+            artefact_learn_prop(item, ARTP_BRAND);
     }
     else
     {
@@ -1342,9 +1340,9 @@ bool swap_monsters(monster* m1, monster* m2)
 
 static bool _art_is_safe(item_def item)
 {
-    int prop_str = artefact_wpn_property(item, ARTP_STRENGTH);
-    int prop_int = artefact_wpn_property(item, ARTP_INTELLIGENCE);
-    int prop_dex = artefact_wpn_property(item, ARTP_DEXTERITY);
+    int prop_str = artefact_property(item, ARTP_STRENGTH);
+    int prop_int = artefact_property(item, ARTP_INTELLIGENCE);
+    int prop_dex = artefact_property(item, ARTP_DEXTERITY);
 
     return prop_str >= 0 && prop_int >= 0 && prop_dex >= 0;
 }
@@ -1709,7 +1707,7 @@ static int _xom_animate_monster_weapon(int sever, bool debug = false)
     destroy_item(dancing->inv[MSLOT_WEAPON]);
 
     dancing->inv[MSLOT_WEAPON] = wpn;
-    mitm[wpn].set_holding_monster(dancing->mindex());
+    mitm[wpn].set_holding_monster(*dancing);
     dancing->colour = mitm[wpn].get_colour();
 
     return XOM_GOOD_ANIMATE_MON_WPN;
@@ -1990,13 +1988,12 @@ static int _xom_change_scenery(bool debug = false)
     vector<string> effects, terse;
     if (fountains_blood > 0)
     {
-        snprintf(info, INFO_SIZE,
+        string fountains = make_stringf(
                  "%s fountain%s start%s gushing blood",
                  fountains_blood == 1 ? "a" : "some",
                  fountains_blood == 1 ? ""  : "s",
                  fountains_blood == 1 ? "s" : "");
 
-        string fountains = info;
         if (effects.empty())
             fountains = uppercase_first(fountains);
         effects.push_back(fountains);
@@ -2012,18 +2009,17 @@ static int _xom_change_scenery(bool debug = false)
 
     if (doors_open > 0)
     {
-        snprintf(info, INFO_SIZE, "%s door%s burst%s open",
-                 doors_open == 1 ? "A"    :
-                 doors_open == 2 ? "Two"
-                                 : "Several",
-                 doors_open == 1 ? ""  : "s",
-                 doors_open == 1 ? "s" : "");
-        effects.emplace_back(info);
+        effects.push_back(make_stringf("%s door%s burst%s open",
+                                       doors_open == 1 ? "A"    :
+                                       doors_open == 2 ? "Two"
+                                                       : "Several",
+                                       doors_open == 1 ? ""  : "s",
+                                       doors_open == 1 ? "s" : ""));
         terse.push_back(make_stringf("%d doors open", doors_open));
     }
     if (doors_close > 0)
     {
-        snprintf(info, INFO_SIZE, "%s%s door%s slam%s shut",
+        string closed = make_stringf("%s%s door%s slam%s shut",
                  doors_close == 1 ? "a"    :
                  doors_close == 2 ? "two"
                                   : "several",
@@ -2031,7 +2027,6 @@ static int _xom_change_scenery(bool debug = false)
                                   : "",
                  doors_close == 1 ? ""  : "s",
                  doors_close == 1 ? "s" : "");
-        string closed = info;
         if (effects.empty())
             closed = uppercase_first(closed);
         effects.push_back(closed);
@@ -2171,6 +2166,43 @@ static int _xom_enchant_monster(bool helpful, bool debug = false)
     return helpful ? XOM_GOOD_ENCHANT_MONSTER : XOM_BAD_ENCHANT_MONSTER;
 }
 
+static inline dungeon_feature_type _vitrified_feature(dungeon_feature_type feat)
+{
+    switch (feat)
+    {
+    case DNGN_ROCK_WALL:
+        return DNGN_CLEAR_ROCK_WALL;
+    case DNGN_STONE_WALL:
+        return DNGN_CLEAR_STONE_WALL;
+    case DNGN_PERMAROCK_WALL:
+        return DNGN_CLEAR_PERMAROCK_WALL;
+    default:
+        return feat;
+    }
+}
+
+// Returns true if there was a visible change.
+static bool _vitrify_area(int radius)
+{
+    if (radius < 2)
+        return false;
+
+    bool something_happened = false;
+    for (radius_iterator ri(you.pos(), radius, C_POINTY); ri; ++ri)
+    {
+        const dungeon_feature_type grid = grd(*ri);
+        const dungeon_feature_type newgrid = _vitrified_feature(grid);
+        if (newgrid != grid)
+        {
+            grd(*ri) = newgrid;
+            set_terrain_changed(*ri);
+            something_happened = true;
+        }
+    }
+    return something_happened;
+}
+
+
 // The nicer stuff.  Note: these things are not necessarily nice.
 static int _xom_is_good(int sever, int tension, bool debug = false)
 {
@@ -2284,7 +2316,7 @@ static int _xom_is_good(int sever, int tension, bool debug = false)
             return XOM_GOOD_VITRIFY;
 
         // This can fail with radius 1, or in open areas.
-        if (vitrify_area(random2avg(sever / 4, 2) + 1))
+        if (_vitrify_area(random2avg(sever / 4, 2) + 1))
         {
             god_speaks(GOD_XOM, _get_xom_speech("vitrification").c_str());
             take_note(Note(NOTE_XOM_EFFECT, you.piety, tension,
@@ -2478,6 +2510,7 @@ static void _xom_zero_miscast()
         string str = "A monocle briefly appears over your ";
         str += coinflip() ? "right" : "left";
         if (you.form == TRAN_SPIDER)
+        {
             if (coinflip())
                 str += " primary";
             else
@@ -2485,6 +2518,7 @@ static void _xom_zero_miscast()
                 str += random_choose(" front", " middle", " rear");
                 str += " secondary";
             }
+        }
         str += " eye.";
         messages.push_back(str);
     }
@@ -2726,7 +2760,7 @@ static int _xom_miscast(const int max_level, const bool nasty,
 
     // Take a note.
     const char* levels[4] = { "harmless", "mild", "medium", "severe" };
-    int school = 1 << random2(SPTYP_LAST_EXPONENT);
+    const auto school = spschools_type::exponent(random2(SPTYP_LAST_EXPONENT + 1));
     string desc = make_stringf("%s %s miscast", levels[level],
                                spelltype_short_name(school));
 #ifdef NOTE_DEBUG_XOM
@@ -3455,7 +3489,9 @@ static int _xom_is_bad(int sever, int tension, bool debug = false)
                 return XOM_DID_NOTHING;
             if (debug)
                 return XOM_BAD_CHAOS_CLOUD;
-            big_cloud(CLOUD_CHAOS, &you, you.pos(), 50, 4 + random2(20));
+            // Place a one-tile cloud with minor spreading.
+            check_place_cloud(CLOUD_CHAOS, you.pos(), 3 + random2(12)*3,
+                              nullptr, random_range(5,15));
             take_note(Note(NOTE_XOM_EFFECT, you.piety, -1, "chaos cloud"),
                       true);
             god_speaks(GOD_XOM, _get_xom_speech("cloud").c_str());
@@ -3787,9 +3823,9 @@ int xom_acts(bool niceness, int sever, int tension, bool debug)
             && x_chance_in_y(you.piety, MAX_PIETY))
         {
 #ifdef NOTE_DEBUG_XOM
-            snprintf(info, INFO_SIZE, "suppress bad act because of %d tension",
-                     tension);
-            take_note(Note(NOTE_MESSAGE, 0, 0, info), true);
+            const string note = string("suppress bad act because of ") +
+                                tension + " tension";
+            take_note(Note(NOTE_MESSAGE, 0, 0, note), true);
 #endif
             return debug ? XOM_BAD_NOTHING : XOM_DID_NOTHING;
         }
@@ -3816,8 +3852,8 @@ int xom_acts(bool niceness, int sever, int tension, bool debug)
             god_speaks(you.religion, msg.c_str());
         }
 #ifdef NOTE_DEBUG_XOM
-        snprintf(info, INFO_SIZE, "reroll piety: %d", you.piety);
-        take_note(Note(NOTE_MESSAGE, 0, 0, info), true);
+        const string note = string("reroll piety: ") + you.piety;
+        take_note(Note(NOTE_MESSAGE, 0, 0, note), true);
 #endif
     }
     else if (was_bored)
@@ -3835,39 +3871,14 @@ int xom_acts(bool niceness, int sever, int tension, bool debug)
 
 void xom_check_lost_item(const item_def& item)
 {
-    if (item.base_type == OBJ_ORBS)
-        xom_is_stimulated(200, "Xom laughs nastily.", true);
-    else if (is_unrandom_artefact(item))
+    if (is_unrandom_artefact(item))
         xom_is_stimulated(100, "Xom snickers.", true);
-    // you can't be made lose unique runes anymore, it was voluntary -- not so funny
-    else if (item_is_rune(item) && item_is_unique_rune(item))
-        xom_is_stimulated(50, "Xom snickers loudly.", true);
 }
 
 void xom_check_destroyed_item(const item_def& item)
 {
-    int amusement = 0;
-
-    if (item.base_type == OBJ_ORBS)
-    {
-        xom_is_stimulated(200, "Xom laughs nastily.", true);
-        return;
-    }
-    else if (is_unrandom_artefact(item))
+    if (is_unrandom_artefact(item))
         xom_is_stimulated(100, "Xom snickers.", true);
-    else if (item_is_rune(item))
-    {
-        if (item_is_unique_rune(item) || item.plus == RUNE_ABYSSAL)
-            amusement = 200;
-        else
-            amusement = 50;
-    }
-
-    xom_is_stimulated(amusement,
-                      (amusement > 100) ? "Xom snickers loudly." :
-                      (amusement > 50)  ? "Xom snickers."
-                                        : "Xom snickers softly.",
-                      true);
 }
 
 static bool _death_is_funny(const kill_method_type killed_by)
@@ -4117,7 +4128,7 @@ static const string _xom_effect_to_name(int effect)
     return result;
 }
 
-static char* _list_exploration_estimate()
+static string _list_exploration_estimate()
 {
     int explored = 0;
     int mapped   = 0;
@@ -4129,11 +4140,8 @@ static char* _list_exploration_estimate()
     mapped /= 10;
     explored /= 10;
 
-    snprintf(info, INFO_SIZE, "mapping estimate: %d%%\n"
-                              "exploration estimate: %d%%\n",
-             mapped, explored);
-
-    return info;
+    return make_stringf("mapping estimate: %d%%\nexploration estimate: %d%%\n",
+                        mapped, explored);
 }
 
 // Loops over the entire piety spectrum and calls xom_acts() multiple
@@ -4166,7 +4174,7 @@ void debug_xom_effects()
     fprintf(ostat, "---- STARTING XOM DEBUG TESTING ----\n");
     fprintf(ostat, "%s\n", dump_overview_screen(false).c_str());
     fprintf(ostat, "%s\n", screenshot().c_str());
-    fprintf(ostat, "%s\n", _list_exploration_estimate());
+    fprintf(ostat, "%s\n", _list_exploration_estimate().c_str());
     fprintf(ostat, "%s\n", mpr_monster_list().c_str());
     fprintf(ostat, " --> Tension: %d\n", tension);
 

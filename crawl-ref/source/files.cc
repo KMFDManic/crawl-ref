@@ -36,7 +36,6 @@
 #include "dgn-overview.h"
 #include "directn.h"
 #include "dungeon.h"
-#include "effects.h"
 #include "end.h"
 #include "errors.h"
 #include "fineff.h"
@@ -73,6 +72,7 @@
  #include "tilepick-p.h"
 #endif
 #include "tileview.h"
+#include "timed_effects.h"
 #include "unwind.h"
 #include "version.h"
 #include "view.h"
@@ -1613,6 +1613,8 @@ static void _save_game_base()
 // complain.
 static void _save_game_exit()
 {
+    clua.save_persist();
+
     // Prompt for saving macros.
     if (crawl_state.unsaved_macros
         && !crawl_state.seen_hups

@@ -112,7 +112,11 @@ void init_perishable_stack(item_def &stack, int age)
     ASSERT(is_blood_potion(stack) || _is_chunk(stack));
 
     CrawlHashTable &props = stack.props;
+    const bool never_decay = props.exists(CORPSE_NEVER_DECAYS)
+                             && props[CORPSE_NEVER_DECAYS].get_bool();
     props.clear(); // sanity measure
+    if (never_decay)
+        props[CORPSE_NEVER_DECAYS] = true;
     props[TIMER_KEY].new_vector(SV_INT, SFLAG_CONST_TYPE);
     CrawlVector &timer = props[TIMER_KEY].get_vector();
 
@@ -164,12 +168,14 @@ static bool _item_needs_rot_check(const item_def &item)
     if (!item.defined())
         return false;
 
+    if (item.props.exists(CORPSE_NEVER_DECAYS))
+        return false;
+
     if (is_perishable_stack(item))
         return true;
 
     return item.base_type == OBJ_CORPSES
-           && item.sub_type <= CORPSE_SKELETON // XXX: is this needed?
-           && !item.props.exists(CORPSE_NEVER_DECAYS);
+           && item.sub_type <= CORPSE_SKELETON; // XXX: is this needed?
 }
 
 /**
@@ -183,11 +189,7 @@ static void _rot_floor_gold(item_def &it, int rot_time)
     const bool old_aura = it.freshness > 0;
     it.freshness = max(0, it.freshness - rot_time);
     if (old_aura && !it.freshness)
-    {
         invalidate_agrid(true);
-        you.redraw_armour_class = true;
-        you.redraw_evasion = true;
-    }
 }
 
 /**
@@ -203,7 +205,7 @@ static void _rot_corpse(item_def &it, int mitm_index, int rot_time)
     ASSERT(!it.props.exists(CORPSE_NEVER_DECAYS));
 
     it.freshness -= rot_time;
-    if (it.freshness > 0)
+    if (it.freshness > 0 || is_being_butchered(it))
         return;
 
     if (it.sub_type == CORPSE_SKELETON || !mons_skeleton(it.mon_type))

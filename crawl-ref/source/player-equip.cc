@@ -9,7 +9,10 @@
 #include "artefact.h"
 #include "art-enum.h"
 #include "delay.h"
+#include "english.h" // conjugate_verb
+#include "evoke.h"
 #include "food.h"
+#include "godabil.h"
 #include "goditem.h"
 #include "godpassive.h"
 #include "hints.h"
@@ -221,7 +224,7 @@ static void _equip_artefact_effect(item_def &item, bool *show_msgs, bool unmeld,
 
     artefact_properties_t  proprt;
     artefact_known_props_t known;
-    artefact_wpn_properties(item, proprt, known);
+    artefact_properties(item, proprt, known);
 
     if (proprt[ARTP_AC])
         you.redraw_armour_class = true;
@@ -285,7 +288,7 @@ static void _unequip_artefact_effect(item_def &item,
 
     artefact_properties_t proprt;
     artefact_known_props_t known;
-    artefact_wpn_properties(item, proprt, known);
+    artefact_properties(item, proprt, known);
     const bool msg = !show_msgs || *show_msgs;
 
     if (proprt[ARTP_AC])
@@ -424,12 +427,14 @@ static void _equip_weapon_effect(item_def& item, bool showMsgs, bool unmeld)
             int mp = item.special - you.elapsed_time / POWER_DECAY;
 
             if (mp > 0)
+            {
 #if TAG_MAJOR_VERSION == 34
                 if (you.species == SP_DJINNI)
                     you.hp += mp;
                 else
 #endif
                 you.magic_points += mp;
+            }
 
             if (get_real_mp(true) >= 50)
                 mpr("You feel your magic capacity is already quite full.");
@@ -466,7 +471,7 @@ static void _equip_weapon_effect(item_def& item, bool showMsgs, bool unmeld)
 
         if (artefact)
         {
-            special = artefact_wpn_property(item, ARTP_BRAND);
+            special = artefact_property(item, ARTP_BRAND);
 
             if (!was_known && !(item.flags & ISFLAG_NOTED_ID))
             {
@@ -477,7 +482,7 @@ static void _equip_weapon_effect(item_def& item, bool showMsgs, bool unmeld)
                                origin_desc(item).c_str()));
             }
             else
-                known_recurser = artefact_known_wpn_property(item,
+                known_recurser = artefact_known_property(item,
                                                              ARTP_CURSED);
         }
 
@@ -525,8 +530,7 @@ static void _equip_weapon_effect(item_def& item, bool showMsgs, bool unmeld)
                     break;
 
                 case SPWPN_SPEED:
-                    mprf("Your %s tingle!",
-                         you.hand_name(true).c_str());
+                    mpr(you.hands_act("tingle", "!"));
                     break;
 
                 case SPWPN_VAMPIRISM:
@@ -555,10 +559,17 @@ static void _equip_weapon_effect(item_def& item, bool showMsgs, bool unmeld)
                     break;
 
                 case SPWPN_PENETRATION:
-                    mprf("Your %s briefly pass through it before you manage "
+                {
+                    // FIXME: make hands_act take a pre-verb adverb so we can
+                    // use it here.
+                    bool plural = true;
+                    string hand = you.hand_name(true, &plural);
+
+                    mprf("Your %s briefly %s through it before you manage "
                          "to get a firm grip on it.",
-                         you.hand_name(true).c_str());
+                         hand.c_str(), conjugate_verb("pass", plural).c_str());
                     break;
+                }
 
                 case SPWPN_REAPING:
                     mpr("It is briefly surrounded by shifting shadows.");
@@ -643,6 +654,7 @@ static void _unequip_weapon_effect(item_def& item, bool showMsgs, bool meld)
     {
         you.attribute[ATTR_SHADOWS] = 0;
         update_vision_range();
+        expire_lantern_shadows();
     }
     else if (item.base_type == OBJ_WEAPONS)
     {
@@ -874,7 +886,8 @@ static void _equip_armour_effect(item_def& arm, bool unmeld,
             break;
 
         case SPARM_STEALTH:
-            mpr("You feel stealthy.");
+            if (!player_mutation_level(MUT_NO_STEALTH))
+                mpr("You feel stealthy.");
             break;
 
         case SPARM_RESISTANCE:
@@ -1007,7 +1020,8 @@ static void _unequip_armour_effect(item_def& item, bool meld,
         if (you.cancellable_flight() && !you.evokable_flight())
             you.duration[DUR_FLIGHT] = 0;
 
-        land_player(); // land_player() has a check for airborne()
+        if (you.attribute[ATTR_LAST_FLIGHT_STATUS] == 1)
+            land_player(); // land_player() has a check for airborne()
 
         break;
 
@@ -1020,7 +1034,8 @@ static void _unequip_armour_effect(item_def& item, bool meld,
         break;
 
     case SPARM_STEALTH:
-        mpr("You feel less stealthy.");
+        if (!player_mutation_level(MUT_NO_STEALTH))
+            mpr("You feel less stealthy.");
         break;
 
     case SPARM_RESISTANCE:
@@ -1061,12 +1076,12 @@ static void _remove_amulet_of_faith(item_def &item)
     if (you_worship(GOD_RU))
     {
         // next sacrifice is going to be delaaaayed.
-        if (you.piety >= piety_breakpoint(6))
+        if (you.piety < piety_breakpoint(5))
         {
+            int current_delay = you.props["ru_sacrifice_delay"].get_int();
+            ru_reject_sacrifices(true);
             you.props["ru_sacrifice_delay"] =
-                you.props["ru_sacrifice_delay"].get_int() * 3;
-            simple_god_message(" reconsiders your readiness for further "
-                "sacrifices.");
+                max(you.props["ru_sacrifice_delay"].get_int(), current_delay)*2;
         }
     }
     else if (!you_worship(GOD_NO_GOD)

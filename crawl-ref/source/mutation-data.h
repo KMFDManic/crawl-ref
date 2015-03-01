@@ -727,9 +727,9 @@ static const mutation_def mut_data[] =
    "You are quite resistant to negative energy.",
    "You are immune to negative energy."},
 
-  {"You feel negative.",
-   "You feel negative.",
-   "You feel negative."},
+  {"You feel resistant to negative energy.",
+   "You feel more resistant to negative energy.",
+   "You feel more resistant to negative energy."},
 
   {"", "", ""},
 
@@ -1829,9 +1829,9 @@ static const mutation_def mut_data[] =
 { MUT_NO_DODGING,                0,  1, MUTFLAG_RU, false,
   "inability to train dodging",
 
-  {"You cannot train Dodging.", "", ""},
-  {"You can no longer train Dodging.", "", ""},
-  {"You can once more train Dodging.", "", ""},
+  {"You cannot train Dodging skill.", "", ""},
+  {"You can no longer train Dodging skill.", "", ""},
+  {"You can once more train Dodging skill.", "", ""},
 
   "inability to train Dodging",
 },
@@ -1839,9 +1839,9 @@ static const mutation_def mut_data[] =
 { MUT_NO_ARMOUR,                0,  1, MUTFLAG_RU, false,
   "inability to train armour",
 
-  {"You cannot train your Armour skill.", "", ""},
-  {"You can no longer train your Armour skill.", "", ""},
-  {"You can once more train your Armour skill.", "", ""},
+  {"You cannot train Armour skill.", "", ""},
+  {"You can no longer train Armour skill.", "", ""},
+  {"You can once more train Armour skill.", "", ""},
 
   "inability to train Armour",
 },
@@ -2033,9 +2033,9 @@ static const mutation_def mut_data[] =
 { MUT_MP_WANDS,                        7,  3, MUTFLAG_BAD, false,
   "MP-powered wands",
 
-  {"You expend magic power (6 MP) to slightly strengthen your wands.",
-    "You expend magic power (12 MP) to strengthen your wands.",
-    "You expend magic power (18 MP) to make your wands much stronger."},
+  {"You expend magic power (3 MP) to slightly strengthen your wands.",
+    "You expend magic power (6 MP) to strengthen your wands.",
+    "You expend magic power (9 MP) to make your wands much stronger."},
   {"You feel less able to contain your magic power.",
     "You feel less able to contain your magic power.",
     "You feel less able to contain your magic power."},
@@ -2044,5 +2044,47 @@ static const mutation_def mut_data[] =
     "You feel more able to contain your magic power."},
 
   "MP-powered wands",
+},
+
+{ MUT_UNSKILLED,                        0,  3, MUTFLAG_RU, false,
+  "unskilled",
+
+  {"You are somewhat unskilled (-1 Apt).",
+    "You are unskilled (-2 Apt)",
+    "You are extremely unskilled (-3 Apt)."},
+  {"You feel less skilled.",
+    "You feel less skilled.",
+    "You feel less skilled."},
+  {"You regain all your skill.",
+    "You regain some skill.",
+    "You regain some skill."},
+
+  "a lack of skill",
+},
+
+{ MUT_INEXPERIENCED,                    0,  3, MUTFLAG_RU, false,
+    "inexperienced",
+
+    {"You are somewhat inexperienced (-2 XL).",
+     "You are inexperienced (-4 XL)",
+     "You are extremely inexperienced (-6 XL)."},
+    {"You feel less experienced.",
+     "You feel less experienced.",
+     "You feel less experienced."},
+    {"You regain all your potential.",
+     "You regain some potential.",
+     "You regain some potential."},
+
+     "a lack of experience",
+},
+
+{ MUT_PAWS,                           0,  1, MUTFLAG_GOOD, true,
+  "sharp paws",
+
+  {"Your paws have sharp claws that are effective at stabbing.", "", ""},
+  {"", "", ""},
+  {"", "", ""},
+
+   "claws that catch",
 },
 };

@@ -142,6 +142,17 @@ enum tag_minor_version
     TAG_MINOR_RANDLICHES,          // Liches are now GHOST_DEMONs
     TAG_MINOR_ISFLAG_HANDLED,      // Game tracks which items player has handled
     TAG_MINOR_SHOP_HACK,           // The shop hack is dead!
+    TAG_MINOR_STACKABLE_EVOKERS,   // XP evokers stack
+    TAG_MINOR_REALLY_16_BIT_VEC,   // CrawlVector size really saved as 16-bit
+    TAG_MINOR_FIX_8_BIT_VEC_MAX,   // Fix up bad CrawlVector max size
+    TAG_MINOR_TRACK_BANISHER,      // Persist the name of the last thing that banished the player
+    TAG_MINOR_SHOALS_LITE,         // Remove deep water from old Shoals
+    TAG_MINOR_FIX_EXPLORE_MODE,    // Fix char selection screen on old versions
+    TAG_MINOR_UNSTACKABLE_EVOKERS, // XP evokers no longer stack
+    TAG_MINOR_NO_NEGATIVE_VULN,    // Remove negative energy vulnerability
+    TAG_MINOR_MAX_XL,              // Store max XL instead of hardcoding it
+    TAG_MINOR_NO_RPOIS_MINUS,      // Remove rPois- artefacts
+    TAG_MINOR_XP_PENANCE,          // Let gods other than Ash use xp penance
 #endif
     NUM_TAG_MINORS,
     TAG_MINOR_VERSION = NUM_TAG_MINORS - 1

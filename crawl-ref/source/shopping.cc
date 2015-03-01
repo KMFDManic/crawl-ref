@@ -45,6 +45,7 @@
 #include "tilereg-crt.h"
 #endif
 #include "travel.h"
+#include "unicode.h"
 #include "unwind.h"
 
 #define SHOPPING_LIST_COST_KEY "shopping_list_cost_key"
@@ -545,27 +546,27 @@ static bool _in_a_shop(int shopidx, int &num_in_list)
             }
         }
 
+        string info;
         if (!total_cost)
         {
-            snprintf(info, INFO_SIZE, "You have %d gold piece%s.", you.gold,
-                     you.gold != 1 ? "s" : "");
-
+            info = make_stringf("You have %d gold piece%s.", you.gold,
+                                you.gold != 1 ? "s" : "");
             textcolour(YELLOW);
         }
         else if (total_cost > you.gold)
         {
-            snprintf(info, INFO_SIZE, "You have %d gold piece%s. "
+            info = make_stringf("You have %d gold piece%s. "
                            "You are short %d gold piece%s for the purchase.",
-                     you.gold,
-                     you.gold != 1 ? "s" : "",
-                     total_cost - you.gold,
-                     (total_cost - you.gold != 1) ? "s" : "");
+                           you.gold,
+                           you.gold != 1 ? "s" : "",
+                           total_cost - you.gold,
+                           (total_cost - you.gold != 1) ? "s" : "");
 
             textcolour(LIGHTRED);
         }
         else
         {
-            snprintf(info, INFO_SIZE, "You have %d gold piece%s. "
+            info = make_stringf("You have %d gold piece%s. "
                      "After the purchase, you will have %d gold piece%s.",
                      you.gold,
                      you.gold != 1 ? "s" : "",
@@ -575,19 +576,18 @@ static bool _in_a_shop(int shopidx, int &num_in_list)
             textcolour(YELLOW);
         }
 
-        _shop_print(info, 0);
+        _shop_print(info.c_str(), 0);
 
+        info = "";
         if (first)
         {
             first = false;
-            snprintf(info, INFO_SIZE, "%s What would you like to do? ",
-                      hello.c_str());
+            info = hello + " ";
         }
-        else
-            snprintf(info, INFO_SIZE, "What would you like to do? ");
+        info += "What would you like to do? ";
 
         textcolour(CYAN);
-        _shop_print(info, 1);
+        _shop_print(info.c_str(), 1);
 
         textcolour(LIGHTGREY);
 
@@ -658,10 +658,11 @@ static bool _in_a_shop(int shopidx, int &num_in_list)
                 continue;
             else
             {
-                snprintf(info, INFO_SIZE, "Purchase for %d gold? (y/n)",
-                         total_purchase);
+                const string prompt = make_stringf(
+                                          "Purchase for %d gold? (y/n)",
+                                          total_purchase);
 
-                if (_shop_yesno(info, 'n'))
+                if (_shop_yesno(prompt.c_str(), 'n'))
                 {
                     int num_items = 0, outside_items = 0, quant;
                     for (int i = to_buy.size() - 1; i >= 0; --i)
@@ -911,6 +912,7 @@ static bool _purchase(shop_struct& shop, int index, int cost, bool id)
         || !move_item_to_inv(item))
     {
         copy_item_to_grid(item, shop.pos);
+        return false;
     }
     return true;
 }
@@ -927,7 +929,7 @@ int artefact_value(const item_def &item)
 
     int ret = 10;
     artefact_properties_t prop;
-    artefact_wpn_properties(item, prop);
+    artefact_properties(item, prop);
 
     // Brands are already accounted for via existing ego checks
 
@@ -1823,8 +1825,10 @@ unsigned int item_value(item_def item, bool ident)
     {
         valued = 150;
         const book_type book = static_cast<book_type>(item.sub_type);
-        if (book == BOOK_DESTRUCTION)
+#if TAG_MAJOR_VERSION == 34
+        if (book == BOOK_BUGGY_DESTRUCTION)
             break;
+#endif
 
         if (item_type_known(item))
         {
@@ -2297,7 +2301,8 @@ unsigned int ShoppingList::cull_identical_items(const item_def& item,
             case MISC_DISC_OF_STORMS:
                 break;
             default:
-                return 0;
+                if (!is_xp_evoker(item))
+                    return 0;
         }
         break;
     default:
@@ -2598,7 +2603,7 @@ void ShoppingListMenu::draw_title()
 
         cgotoxy(1, 1);
         formatted_string fs = formatted_string(title->colour);
-        fs.cprintf("%d %s%s, total cost %d gp",
+        fs.cprintf("%d %s%s, total %d gold",
                    title->quantity, title->text.c_str(),
                    title->quantity > 1? "s" : "",
                    total_cost);
@@ -2628,22 +2633,39 @@ void ShoppingListMenu::draw_title()
     }
 }
 
+/**
+ * Describe the location of a given shopping list entry.
+ *
+ * @param thing     A shopping list entry.
+ * @return          Something like [Orc:4], probably.
+ */
+string ShoppingList::describe_thing_pos(const CrawlHashTable &thing)
+{
+    return make_stringf("[%s]", thing_pos(thing).id.describe().c_str());
+}
+
 void ShoppingList::fill_out_menu(Menu& shopmenu)
 {
     menu_letter hotkey;
+    int longest = 0;
+    // How much space does the longest entry need for proper alignment?
+    for (const CrawlHashTable &thing : *list)
+        longest = max(longest, strwidth(describe_thing_pos(thing)));
+
     for (CrawlHashTable &thing : *list)
     {
-        level_pos      pos     = thing_pos(thing);
-        int            cost    = thing_cost(thing);
-        bool           unknown = false;
+        const int cost = thing_cost(thing);
+        const bool unknown = thing_is_item(thing)
+                             && shop_item_unknown(get_thing_item(thing));
 
-        if (thing_is_item(thing))
-            unknown = shop_item_unknown(get_thing_item(thing));
-
-        string etitle =
-            make_stringf("[%s] %s%s (%d gp)", pos.id.describe().c_str(),
-                         name_thing(thing, DESC_A).c_str(),
-                         unknown ? " (unknown)" : "", cost);
+        const string etitle =
+            make_stringf(
+                "%*s%5d gold  %s%s",
+                longest,
+                describe_thing_pos(thing).c_str(),
+                cost,
+                name_thing(thing, DESC_A).c_str(),
+                unknown ? " (unknown)" : "");
 
         MenuEntry *me = new MenuEntry(etitle, MEL_ITEM, 1, hotkey);
         me->data = &thing;
@@ -2744,12 +2766,12 @@ void ShoppingList::display()
             else // not an item, so we only stored a description.
             {
                 // HACK: Assume it's some kind of portal vault.
-                snprintf(info, INFO_SIZE,
-                         "%s with an entry fee of %d gold pieces.",
-                         describe_thing(*thing, DESC_A).c_str(),
-                         (int) thing_cost(*thing));
+                const string info = make_stringf(
+                             "%s with an entry fee of %d gold pieces.",
+                             describe_thing(*thing, DESC_A).c_str(),
+                             (int) thing_cost(*thing));
 
-                print_description(info);
+                print_description(info.c_str());
                 getchm();
             }
         }
@@ -2800,7 +2822,7 @@ void ShoppingList::refresh()
         you.props[SHOPPING_LIST_KEY].new_vector(SV_HASH, SFLAG_CONST_TYPE);
     list = &you.props[SHOPPING_LIST_KEY].get_vector();
 
-    sort(list->begin(), list->end(), _compare_shopping_things);
+    stable_sort(list->begin(), list->end(), _compare_shopping_things);
 
     min_unbuyable_cost = INT_MAX;
     min_unbuyable_idx  = -1;

@@ -880,21 +880,20 @@ static void _print_stats_wp(int y)
             else
                 wpn.plus -= 3 * you.props["corrosion_amount"].get_int();
         }
-        text = wpn.name(DESC_INVENTORY, true, false, true);
+        text = wpn.name(DESC_PLAIN, true, false, true);
     }
     else
-        text = "-) " + you.unarmed_attack_name();
+        text = you.unarmed_attack_name();
 
     CGOTOXY(1, y, GOTO_STAT);
-    textcolour(Options.status_caption_colour);
-    CPRINTF("Wp: ");
+    textcolour(HUD_CAPTION_COLOUR);
+    const char slot_letter = you.weapon() ? index_to_letter(you.weapon()->link)
+                                          : '-';
+    const string slot_name = make_stringf("%c) ", slot_letter);
+    CPRINTF("%s", slot_name.c_str());
     textcolour(_wpn_name_colour());
-#ifdef USE_TILE_LOCAL
-    int w = crawl_view.hudsz.x - (tiles.is_using_small_layout()?0:4);
-    CPRINTF("%s", chop_string(text, w).c_str());
-#else
-    CPRINTF("%s", chop_string(text, crawl_view.hudsz.x-4).c_str());
-#endif
+    const int max_name_width = crawl_view.hudsz.x - slot_name.size();
+    CPRINTF("%s", chop_string(text, max_name_width).c_str());
     textcolour(LIGHTGREY);
 }
 
@@ -905,38 +904,36 @@ static void _print_stats_qv(int y)
 
     int q = you.m_quiver->get_fire_item();
     ASSERT_RANGE(q, -1, ENDOFPACK);
+    char hud_letter = '-';
     if (q != -1 && !fire_warn_if_impossible(true))
     {
         const item_def& quiver = you.inv[q];
+        hud_letter = index_to_letter(quiver.link);
         const string prefix = item_prefix(quiver);
         const int prefcol =
-            menu_colour(quiver.name(DESC_INVENTORY), prefix, "stats");
+            menu_colour(quiver.name(DESC_PLAIN), prefix, "stats");
         if (prefcol != -1)
             col = prefcol;
         else
             col = LIGHTGREY;
-        text = quiver.name(DESC_INVENTORY, true);
+        text = quiver.name(DESC_PLAIN, true);
     }
     else
     {
-        const string prefix = "-) ";
-
         if (fire_warn_if_impossible(true))
         {
             col  = DARKGREY;
-            text = "Unavailable";
+            text = "Quiver unavailable";
         }
         else
         {
             col  = LIGHTGREY;
             text = "Nothing quivered";
         }
-
-        text = prefix + text;
     }
     CGOTOXY(1, y, GOTO_STAT);
-    textcolour(Options.status_caption_colour);
-    CPRINTF("Qv: ");
+    textcolour(HUD_CAPTION_COLOUR);
+    CPRINTF("%c) ", hud_letter);
     textcolour(col);
 #ifdef USE_TILE_LOCAL
     int w = crawl_view.hudsz.x - (tiles.is_using_small_layout()?0:4);
@@ -1311,7 +1308,7 @@ void print_stats()
         CPRINTF("XL: ");
         textcolour(HUD_VALUE_COLOUR);
         CPRINTF("%2d ", you.experience_level);
-        if (you.experience_level >= 27)
+        if (you.experience_level >= you.get_max_xl())
             CPRINTF("%10s", "");
         else
         {
@@ -2031,43 +2028,34 @@ static void _print_overview_screen_equip(column_composer& cols,
 
 static string _overview_screen_title(int sw)
 {
-    char title[50];
-    snprintf(title, sizeof title, " %s ", player_title().c_str());
+    string title = make_stringf(" %s ", player_title().c_str());
 
-    char species_job[50];
-    snprintf(species_job, sizeof species_job,
-             "(%s %s)",
-             species_name(you.species).c_str(),
-             you.class_name.c_str());
-
-    char time_turns[50] = "";
+    string species_job = make_stringf("(%s %s)",
+                                      species_name(you.species).c_str(),
+                                      you.class_name.c_str());
 
     handle_real_time();
-    snprintf(time_turns, sizeof time_turns,
-             " Turns: %d, Time: %s",
-             you.num_turns, make_time_string(you.real_time, true).c_str());
+    string time_turns = make_stringf(" Turns: %d, Time: ", you.num_turns)
+                      + make_time_string(you.real_time, true);
 
-    int linelength = strwidth(you.your_name) + strwidth(title)
-                     + strwidth(species_job) + strwidth(time_turns);
-    for (int count = 0; linelength >= sw && count < 2;
-         count++)
+    const int char_width = strwidth(species_job);
+    const int title_width = strwidth(title);
+
+    int linelength = strwidth(you.your_name) + title_width
+                   + char_width + strwidth(time_turns);
+
+    if (linelength >= sw)
     {
-        switch (count)
-        {
-        case 0:
-            snprintf(species_job, sizeof species_job,
-                     "(%s%s)",
-                     get_species_abbrev(you.species),
-                     get_job_abbrev(you.char_class));
-            break;
-        case 1:
-            strcpy(title, "");
-            break;
-        default:
-            break;
-        }
-        linelength = strwidth(you.your_name) + strwidth(title)
-                     + strwidth(species_job) + strwidth(time_turns);
+        species_job = make_stringf("(%s%s)", get_species_abbrev(you.species),
+                                             get_job_abbrev(you.char_class));
+        linelength -= (char_width - strwidth(species_job));
+    }
+
+    // Still not enough?
+    if (linelength >= sw)
+    {
+        title = " ";
+        linelength -= (title_width - 1);
     }
 
     string text;
@@ -2305,7 +2293,7 @@ static vector<formatted_string> _get_overview_stats()
     entry.textcolour(HUD_VALUE_COLOUR);
     entry.cprintf("%d", you.experience_level);
 
-    if (you.experience_level < 27)
+    if (you.experience_level < you.get_max_xl())
     {
         entry.textcolour(HUD_CAPTION_COLOUR);
         entry.cprintf("   Next: ");
@@ -2440,7 +2428,8 @@ static vector<formatted_string> _get_overview_resistances(
     // TODO: what about different levels of anger/berserkitis?
     const bool show_angry = (you.angry(calc_unid)
                              || player_mutation_level(MUT_BERSERK))
-                            && !rclar && !stasis;
+                            && !rclar && !stasis
+                            && !you.is_lifeless_undead();
     out += show_angry ? _resist_composer("Rnd*Rage", cwidth, 1, 1, false) + "\n"
                       : _resist_composer("Clarity", cwidth, rclar) + "\n";
 
@@ -2664,8 +2653,6 @@ static string _status_mut_abilities(int sw)
         // breathe poison replaces spit poison:
         if (!player_mutation_level(MUT_BREATHE_POISON))
             mutations.emplace_back("spit poison");
-        else
-            mutations.emplace_back("breathe poison");
 
         if (you.experience_level > 12)
         {
@@ -2805,7 +2792,7 @@ static string _status_mut_abilities(int sw)
         mutations.emplace_back("almost no armour");
         mutations.emplace_back("amphibious");
         mutations.push_back(_annotate_form_based(
-            "8 rings",
+            make_stringf("%d rings", you.has_tentacles(false)),
             !get_form()->slot_available(EQ_RING_EIGHT)));
         mutations.push_back(_annotate_form_based(
             make_stringf("constrict %d", you.has_tentacles(false)),
@@ -2849,8 +2836,10 @@ static string _status_mut_abilities(int sw)
     // get changes to EV and SH.
     if (AC_change && you.form != TRAN_STATUE)
     {
-        snprintf(info, INFO_SIZE, "AC %s%d", (AC_change > 0 ? "+" : ""), AC_change);
-        mutations.emplace_back(info);
+        const string ac_mut = make_stringf("AC %s%d",
+                                           (AC_change > 0 ? "+" : ""),
+                                           AC_change);
+        mutations.push_back(ac_mut);
     }
 
     if (mutations.empty())

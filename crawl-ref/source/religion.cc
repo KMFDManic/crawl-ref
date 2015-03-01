@@ -292,9 +292,9 @@ const char* god_gain_power_messages[NUM_GODS][MAX_GOD_ABILITIES] =
       "order the top five cards of a deck, losing the rest" },
     // Elyvilon
     { "provide lesser healing for yourself",
+      "heal and attempt to pacify others",
       "purify yourself",
-      "provide greater healing for yourself and others",
-      "",
+      "provide greater healing for yourself",
       "call upon Elyvilon for divine vigour" },
     // Lugonu
     { "depart the Abyss",
@@ -437,9 +437,9 @@ const char* god_lose_power_messages[NUM_GODS][MAX_GOD_ABILITIES] =
       "stack decks" },
     // Elyvilon
     { "provide lesser healing for yourself",
+      "heal and attempt to pacify others",
       "purify yourself",
-      "provide greater healing",
-      "",
+      "provide greater healing for yourself",
       "call upon Elyvilon for divine vigour" },
     // Lugonu
     { "depart the Abyss at will",
@@ -552,12 +552,12 @@ bool is_unavailable_god(god_type god)
     // oklobs, etc...
     // Basically, ZotDef is Fedhas.
 
-    // No Ashenzari/Nemelex, too -- nothing to explore, can't use
-    // their abilities.
+    // Don't allow exploration-piety gods, either -- nothing to explore.
     // We could give some piety for every wave, but there's little point.
     if (crawl_state.game_is_zotdef() && (god == GOD_FEDHAS
                                          || god == GOD_ASHENZARI
-                                         || god == GOD_NEMELEX_XOBEH))
+                                         || god == GOD_NEMELEX_XOBEH
+                                         || god == GOD_ELYVILON))
     {
         return true;
     }
@@ -605,40 +605,44 @@ string get_god_likes(god_type which_god, bool verbose)
         break;
 
     case GOD_FEDHAS:
-        snprintf(info, INFO_SIZE, "you promote the decay of nearby "
-                                  "corpses%s",
-                 verbose ? " by <w>p</w>raying" : "");
-        likes.emplace_back(info);
+    {
+        string like = "you promote the decay of nearby corpses";
+        if (verbose)
+           like += " by <w>p</w>raying";
+        likes.push_back(like);
         break;
+    }
 
     case GOD_TROG:
-        snprintf(info, INFO_SIZE, "you destroy spellbooks%s",
-                 verbose ? " via the <w>a</w> command" : "");
-        likes.emplace_back(info);
+    {
+        string like = "you destroy spellbooks";
+        if (verbose)
+           like += " via the <w>a</w> command";
+        likes.push_back(like);
         break;
+    }
 
     case GOD_ELYVILON:
-        snprintf(info, INFO_SIZE, "you destroy weapons (especially unholy and "
-                                  "evil ones)%s",
-                 verbose ? " via the <w>p</w> command (inscribe items with "
-                           "<w>!p</w> to prevent their accidental destruction)"
-                         : "");
-        likes.emplace_back(info);
-        likes.emplace_back("you calm hostilities by healing your foes");
+        likes.emplace_back("you explore the world");
         break;
 
     case GOD_JIYVA:
-        snprintf(info, INFO_SIZE, "you sacrifice items%s",
-                 verbose ? " by allowing slimes to consume them" : "");
-        likes.emplace_back(info);
+    {
+        string like = "you sacrifice items";
+        if (verbose)
+            like += " by allowing slimes to consume them";
+        likes.push_back(like);
         break;
+    }
 
     case GOD_CHEIBRIADOS:
-        snprintf(info, INFO_SIZE, "you kill fast things%s",
-                 verbose ? ", relative to your speed"
-                         : "");
-        likes.emplace_back(info);
+    {
+        string like = "you kill fast things";
+        if (verbose)
+            like += ", relative to your speed";
+        likes.push_back(like);
         break;
+    }
 
     case GOD_ASHENZARI:
         likes.emplace_back("you explore the world (preferably while bound by "
@@ -669,21 +673,25 @@ string get_god_likes(god_type which_god, bool verbose)
     switch (which_god)
     {
     case GOD_ZIN:
-        snprintf(info, INFO_SIZE, "you donate money%s",
-                 verbose ? " (by <w>p</w>raying at an altar)" : "");
-        likes.emplace_back(info);
+    {
+        string like = "you donate money";
+        if (verbose)
+            like += " (by <w>p</w>raying at an altar)";
+        likes.push_back(like);
         break;
+    }
 
     case GOD_BEOGH:
-        snprintf(info, INFO_SIZE, "you bless dead orcs%s",
-                 verbose ? " (by standing over their remains and <w>p</w>raying)" : "");
-
-        likes.emplace_back(info);
+    {
+        string like = "you bless dead orcs";
+        if (verbose)
+            like += " (by standing over their remains and <w>p</w>raying";
+        likes.push_back(like);
         break;
+    }
 
     case GOD_NEMELEX_XOBEH:
-        snprintf(info, INFO_SIZE, "you explore the world");
-        likes.emplace_back(info);
+        likes.emplace_back("you explore the world");
         break;
 
     default:
@@ -692,10 +700,10 @@ string get_god_likes(god_type which_god, bool verbose)
 
     if (god_likes_fresh_corpses(which_god))
     {
-        snprintf(info, INFO_SIZE, "you sacrifice fresh corpses%s",
-                 verbose ? " (by standing over them and <w>p</w>raying)" : "");
-
-        likes.emplace_back(info);
+        string like = "you sacrifice fresh corpses";
+        if (verbose)
+            like += " (by standing over them and <w>p</w>raying";
+        likes.push_back(like);
     }
 
     switch (which_god)
@@ -1055,6 +1063,15 @@ bool active_penance(god_type god)
            && (god != GOD_NEMELEX_XOBEH || you.penance[god] > 100)
            && (god == you.religion && !is_good_god(god)
                || god_hates_your_god(god, you.religion));
+}
+
+// True for gods whose wrath is passive and expires with XP gain.
+bool xp_penance(god_type god)
+{
+    return player_under_penance(god)
+           && !is_unavailable_god(god)
+           && (god == GOD_ASHENZARI
+               || god == GOD_GOZAG);
 }
 
 void dec_penance(god_type god, int val)
@@ -1711,7 +1728,6 @@ static set<spell_type> _vehumet_eligible_gift_spells(set<spell_type> excluded_sp
 static int _vehumet_weighting(spell_type spell)
 {
     int bias = 100 + elemental_preference(spell, 10);
-    bias = min(max(bias, 10), 190);
     return bias;
 }
 
@@ -2053,7 +2069,7 @@ string god_name(god_type which_god, bool long_name)
     case GOD_DITHMENOS:     return "Dithmenos";
     case GOD_GOZAG:         return "Gozag";
     case GOD_QAZLAL:        return "Qazlal";
-    case GOD_RU:        return "Ru";
+    case GOD_RU:            return "Ru";
     case GOD_JIYVA: // This is handled at the beginning of the function
     case NUM_GODS:          return "Buggy";
     }
@@ -2931,9 +2947,9 @@ void excommunication(god_type new_god, bool immediate)
         if (you.transfer_skill_points > 0)
             ashenzari_end_transfer(false, true);
         you.duration[DUR_SCRYING] = 0;
-        you.exp_docked = exp_needed(min<int>(you.max_level, 27)  + 1)
-                       - exp_needed(min<int>(you.max_level, 27));
-        you.exp_docked_total = you.exp_docked;
+        you.exp_docked[old_god] = exp_needed(min<int>(you.max_level, 27) + 1)
+                                  - exp_needed(min<int>(you.max_level, 27));
+        you.exp_docked_total[old_god] = you.exp_docked[old_god];
         _set_penance(old_god, 50);
         break;
 
@@ -2958,7 +2974,10 @@ void excommunication(god_type new_god, bool immediate)
             branch_bribe[it->id] = 0;
         add_daction(DACT_BRIBE_TIMEOUT);
         add_daction(DACT_REMOVE_GOZAG_SHOPS);
-        _set_penance(old_god, 25);
+        you.exp_docked[old_god] = exp_needed(min<int>(you.max_level, 27) + 1)
+                                  - exp_needed(min<int>(you.max_level, 27));
+        you.exp_docked_total[old_god] = you.exp_docked[old_god];
+        _set_penance(old_god, 50);
         break;
 
     case GOD_QAZLAL:
@@ -3157,7 +3176,6 @@ bool god_likes_items(god_type god, bool greedy_explore)
     {
     case GOD_BEOGH:
     case GOD_ASHENZARI:
-    case GOD_ELYVILON:
         return true;
 
     case NUM_GODS: case GOD_RANDOM: case GOD_NAMELESS:
@@ -3185,18 +3203,6 @@ bool god_likes_item(god_type god, const item_def& item)
 
     switch (god)
     {
-    case GOD_ELYVILON:
-        if (item_is_stationary_net(item)) // Held in a net?
-            return false;
-        return (item.base_type == OBJ_WEAPONS
-                || item.base_type == OBJ_STAVES
-                || item.base_type == OBJ_RODS
-                || item.base_type == OBJ_MISSILES)
-               // Once you've reached *** once, don't accept mundane weapon
-               // sacrifices ever again just because of value.
-               && (is_unholy_item(item) || is_evil_item(item)
-                   || you.piety_max[GOD_ELYVILON] < piety_breakpoint(2));
-
     case GOD_BEOGH:
         return item.base_type == OBJ_CORPSES
                && mons_genus(item.mon_type) == MONS_ORC;
@@ -3278,6 +3284,19 @@ bool player_can_join_god(god_type which_god)
     if (which_god == GOD_GOZAG && you.gold < gozag_service_fee())
         return false;
 
+    if (player_mutation_level(MUT_NO_LOVE) && (which_god == GOD_BEOGH
+                                           ||  which_god == GOD_JIYVA
+                                           ||  which_god == GOD_ELYVILON))
+    {
+        return false;
+    }
+
+    if (player_mutation_level(MUT_NO_ARTIFICE)
+            && which_god == GOD_NEMELEX_XOBEH)
+    {
+      return false;
+    }
+
     return _transformed_player_can_join_god(which_god);
 }
 
@@ -3304,10 +3323,6 @@ static void _god_welcome_handle_gear()
         auto_id_inventory();
         ash_detect_portals(true);
     }
-
-    // detect evil weapons
-    if (you_worship(GOD_ELYVILON))
-        auto_id_inventory();
 
     // Give a reminder to remove any disallowed equipment.
     for (int i = EQ_MIN_ARMOUR; i < EQ_MAX_ARMOUR; i++)
@@ -3477,13 +3492,7 @@ void join_religion(god_type which_god, bool immediate)
         mprf(MSGCH_MONSTER_ENCHANT, "Your magic-using allies forsake you.");
     }
 
-    if (you_worship(GOD_ELYVILON))
-    {
-        mprf(MSGCH_GOD, "You can now call upon Elyvilon to destroy weapons "
-                        "lying on the ground.");
-        mprf(MSGCH_GOD, "You can now provide lesser healing for others.");
-    }
-    else if (you_worship(GOD_TROG))
+    if (you_worship(GOD_TROG))
     {
         mprf(MSGCH_GOD, "You can now call upon Trog to burn spellbooks in your "
             "surroundings.");
@@ -3612,18 +3621,19 @@ void join_religion(god_type which_god, bool immediate)
 
         for (size_t i = 0; i < abilities.size(); ++i)
         {
+            if (abilities[i] == ABIL_GOZAG_POTION_PETITION
+                && !you.attribute[ATTR_GOZAG_FIRST_POTION])
+            {
+                simple_god_message(" offers you a free set of potion effects!");
+                needs_redraw = true;
+                continue;
+            }
             if (you.gold >= get_gold_cost(abilities[i])
                 && _abil_chg_message(god_gain_power_messages[you.religion][i],
                                      "You have enough gold to %s.", i))
             {
                 needs_redraw = true;
             }
-        }
-
-        if (!you.one_time_ability_used[you.religion])
-        {
-            simple_god_message(" will now duplicate a non-artefact item for"
-                               " you... once.");
         }
 
         if (needs_redraw)
@@ -3693,6 +3703,20 @@ void god_pitch(god_type which_god)
                      " have %d.", fee, you.gold);
             }
         }
+        else if (player_mutation_level(MUT_NO_LOVE)
+                 && (which_god == GOD_BEOGH
+                 || which_god == GOD_ELYVILON
+                 || which_god == GOD_JIYVA))
+        {
+            simple_god_message(" does not accept worship from the loveless!",
+                               which_god);
+        }
+        else if (player_mutation_level(MUT_NO_ARTIFICE)
+                 && which_god == GOD_NEMELEX_XOBEH)
+        {
+            simple_god_message(" does not accept worship for those who cannot "
+                              "deal a hand of cards!", which_god);
+        }
         else if (!_transformed_player_can_join_god(which_god))
         {
             simple_god_message(" says: How dare you come in such a loathsome"
@@ -3733,17 +3757,17 @@ void god_pitch(god_type which_god)
         {
             service_fee = make_stringf(
                     "The service fee for joining is currently %d gold; you"
-                    " currently have %d.\n",
+                    " have %d.\n",
                     fee, you.gold);
         }
     }
-    snprintf(info, INFO_SIZE, "%sDo you wish to %sjoin this religion?",
-             service_fee.c_str(),
-             (you.worshipped[which_god]) ? "re" : "");
+    const string prompt = make_stringf("%sDo you wish to %sjoin this religion?",
+                                       service_fee.c_str(),
+                                       (you.worshipped[which_god]) ? "re" : "");
 
-    cgotoxy(1, 18, GOTO_CRT);
+    cgotoxy(1, 21, GOTO_CRT);
     textcolour(channel_to_colour(MSGCH_PROMPT));
-    if (!yesno(info, false, 'n', true, true, false, nullptr, GOTO_CRT))
+    if (!yesno(prompt.c_str(), false, 'n', true, true, false, nullptr, GOTO_CRT))
     {
         you.turn_is_over = false; // Okay, opt out.
         redraw_screen();
@@ -3905,7 +3929,7 @@ bool god_hates_spell(spell_type spell, god_type god, bool rod_spell)
     if (god == GOD_TROG && !rod_spell)
         return true;
 
-    unsigned int disciplines = get_spell_disciplines(spell);
+    spschools_type disciplines = get_spell_disciplines(spell);
 
     switch (god)
     {
@@ -3959,7 +3983,6 @@ bool god_hates_ability(ability_type ability, god_type god)
             return god == GOD_SHINING_ONE;
         case ABIL_BREATHE_FIRE:
         case ABIL_BREATHE_STICKY_FLAME:
-        case ABIL_BREATHE_STEAM:
         case ABIL_DELAYED_FIREBALL:
         case ABIL_HELLFIRE:
             return god == GOD_DITHMENOS;

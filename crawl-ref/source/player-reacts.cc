@@ -49,7 +49,6 @@
 #include "dgn-shoals.h"
 #include "dlua.h"
 #include "dungeon.h"
-#include "effects.h"
 #include "env.h"
 #include "evoke.h"
 #include "exercise.h"
@@ -122,6 +121,7 @@
 #include "tiledef-dngn.h"
 #include "tilepick.h"
 #endif
+#include "timed_effects.h"
 #include "transform.h"
 #include "traps.h"
 #include "travel.h"
@@ -1151,9 +1151,6 @@ static void _decrement_durations()
     _decrement_a_duration(DUR_POISON_VULN, delay,
                           "You feel less vulnerable to poison.");
 
-    _decrement_a_duration(DUR_NEGATIVE_VULN, delay,
-                          "You feel less vulnerable to negative energy.");
-
     if (_decrement_a_duration(DUR_PORTAL_PROJECTILE, delay,
                               "You are no longer teleporting projectiles to their destination."))
     {
@@ -1299,11 +1296,10 @@ static void _regenerate_hp_and_mp(int delay)
 
 void player_reacts()
 {
-    extern int stealth;             // defined in main.cc
-
     search_around();
 
-    stealth = check_stealth();
+    //XXX: does this _need_ to be calculated up here?
+    const int stealth = check_stealth();
 
 #ifdef DEBUG_STEALTH
     // Too annoying for regular diagnostics.
@@ -1363,7 +1359,7 @@ void player_reacts()
                 save_game(false);
         }
         else if (you.form == TRAN_WISP && !you.stasis())
-            random_blink(false);
+            uncontrolled_blink();
     }
 
     actor_apply_cloud(&you);
@@ -1407,7 +1403,7 @@ void player_reacts()
         discover_mimic(*ai);
 
     // Player stealth check.
-    seen_monsters_react();
+    seen_monsters_react(stealth);
 
     update_stat_zero();
 

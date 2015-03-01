@@ -206,8 +206,6 @@ static monster_info_flags ench_to_mb(const monster& mons, enchant_type ench)
         return MB_REPEL_MSL;
     case ENCH_DEFLECT_MISSILES:
         return MB_DEFLECT_MSL;
-    case ENCH_NEGATIVE_VULN:
-        return MB_NEGATIVE_VULN;
     case ENCH_CONDENSATION_SHIELD:
         return MB_CONDENSATION_SHIELD;
     case ENCH_RESISTANCE:
@@ -416,8 +414,17 @@ monster_info::monster_info(monster_type p_type, monster_type p_base_type)
         u.ghost.damage = 5;
     }
 
-    if (base_type == MONS_NO_MONSTER)
+    // Don't put a bad base type on ?/mdraconian annihilator etc.
+    if (base_type == MONS_NO_MONSTER && !mons_is_job(type))
         base_type = type;
+
+    if (mons_is_job(type))
+    {
+        const monster_type race = (base_type == MONS_NO_MONSTER) ? draco_type
+                                                                 : base_type;
+        ac += get_mons_class_ac(race);
+        ev += get_mons_class_ev(race);
+    }
 
     if (mons_is_unique(type))
     {
@@ -505,16 +512,10 @@ monster_info::monster_info(const monster* m, int milev)
 
     _colour = m->colour;
 
-    int stype = 0;
-    if (m->is_summoned(0, &stype)
+    if (m->is_summoned()
         && (!m->has_ench(ENCH_PHANTOM_MIRROR) || m->friendly()))
     {
         mb.set(MB_SUMMONED);
-        if (stype > 0 && stype < NUM_SPELLS
-            && summons_are_capped(static_cast<spell_type>(stype)))
-        {
-            mb.set(MB_SUMMONED_NO_STAIRS);
-        }
     }
     else if (m->is_perm_summoned())
         mb.set(MB_PERM_SUMMON);
@@ -996,7 +997,7 @@ string monster_info::common_name(description_level_type desc) const
         if (num_heads < 11)
             ss << number_in_words(num_heads);
         else
-            ss << make_stringf("%d", num_heads);
+            ss << std::to_string(num_heads);
 
         ss << "-headed ";
     }
@@ -1179,6 +1180,12 @@ bool monster_info::less_than(const monster_info& m1, const monster_info& m2,
     // Shifters after real monsters of the same type.
     if (m1.is(MB_SHAPESHIFTER) != m2.is(MB_SHAPESHIFTER))
         return m2.is(MB_SHAPESHIFTER);
+
+    // Spectralised after the still-living. There's not terribly much
+    // difference, but this keeps us from combining them in the monster
+    // list so they all appear to be spectralised.
+    if (m1.is(MB_SPECTRALISED) != m2.is(MB_SPECTRALISED))
+        return m2.is(MB_SPECTRALISED);
 
     if (zombified)
     {
@@ -1576,9 +1583,7 @@ vector<string> monster_info::attributes() const
         v.emplace_back("lightly drained");
     if (is(MB_HEAVILY_DRAINED))
         v.emplace_back("heavily drained");
-    if (is(MB_NEGATIVE_VULN))
-        v.emplace_back("more vulnerable to negative energy");
-    if (is(MB_OZOCUBUS_ARMOUR))
+    if (is(MB_CONDENSATION_SHIELD))
         v.emplace_back("protected by a disc of dense vapour");
     if (is(MB_RESISTANCE))
         v.emplace_back("unusually resistant");
@@ -1648,19 +1653,19 @@ int monster_info::randarts(artefact_prop_type ra_prop) const
         item_def* ring   = inv[MSLOT_JEWELLERY].get();
 
         if (weapon && weapon->base_type == OBJ_WEAPONS && is_artefact(*weapon))
-            ret += artefact_wpn_property(*weapon, ra_prop);
+            ret += artefact_property(*weapon, ra_prop);
 
         if (second && second->base_type == OBJ_WEAPONS && is_artefact(*second))
-            ret += artefact_wpn_property(*second, ra_prop);
+            ret += artefact_property(*second, ra_prop);
 
         if (armour && armour->base_type == OBJ_ARMOUR && is_artefact(*armour))
-            ret += artefact_wpn_property(*armour, ra_prop);
+            ret += artefact_property(*armour, ra_prop);
 
         if (shield && shield->base_type == OBJ_ARMOUR && is_artefact(*shield))
-            ret += artefact_wpn_property(*shield, ra_prop);
+            ret += artefact_property(*shield, ra_prop);
 
         if (ring && ring->base_type == OBJ_JEWELLERY && is_artefact(*ring))
-            ret += artefact_wpn_property(*ring, ra_prop);
+            ret += artefact_property(*ring, ra_prop);
     }
 
     return ret;

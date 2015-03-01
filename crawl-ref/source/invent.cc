@@ -351,6 +351,11 @@ void InvMenu::set_preselect(const vector<SelItem> *pre)
     pre_select = pre;
 }
 
+string slot_description()
+{
+    return make_stringf("%d/%d slots", inv_count(), ENDOFPACK);
+}
+
 void InvMenu::set_title(const string &s)
 {
     string stitle = s;
@@ -365,10 +370,7 @@ void InvMenu::set_title(const string &s)
         // so that get_number_of_cols returns the appropriate value.
         cgotoxy(1, 1);
 
-        stitle = make_stringf(
-            "Inventory: %d/%d slots",
-            inv_count(),
-            ENDOFPACK);
+        stitle = "Inventory: " + slot_description();
 
         string prompt = "(_ for help)";
         stitle = stitle + string(max(0, get_number_of_cols() - strwidth(stitle)
@@ -1625,7 +1627,7 @@ static bool _is_known_no_tele_item(const item_def &item)
         return false;
 
     bool known;
-    int val = artefact_wpn_property(item, ARTP_PREVENT_TELEPORTATION, known);
+    int val = artefact_property(item, ARTP_PREVENT_TELEPORTATION, known);
 
     if (known && val)
         return true;
@@ -1704,14 +1706,14 @@ bool needs_handle_warning(const item_def &item, operation_types oper,
             return true;
         }
 
-        if (is_artefact(item) && artefact_wpn_property(item, ARTP_MUTAGENIC))
+        if (is_artefact(item) && artefact_property(item, ARTP_MUTAGENIC))
             return true;
     }
 
     if (oper == OPER_PUTON || oper == OPER_WEAR || oper == OPER_TAKEOFF
         || oper == OPER_REMOVE)
     {
-        if (is_artefact(item) && artefact_wpn_property(item, ARTP_MUTAGENIC))
+        if (is_artefact(item) && artefact_property(item, ARTP_MUTAGENIC))
             return true;
     }
 
@@ -2180,32 +2182,11 @@ void list_charging_evokers(FixedVector<item_def*, NUM_MISCELLANY> &evokers)
     {
         item_def& item(you.inv[i]);
         // can't charge non-evokers, or evokers that are full
-        if (!is_xp_evoker(item) || item.evoker_debt == 0)
+        if (!is_xp_evoker(item) || evoker_debt(item.sub_type) == 0)
             continue;
-
-        // Only recharge one of each type of evoker at a time.
-        // Prioritizes by which one is most nearly charged.
-        if (evokers[item.sub_type]
-            && evokers[item.sub_type]->evoker_debt <= item.evoker_debt)
-        {
-            continue;
-        }
 
         evokers[item.sub_type] = &item;
     }
-}
-
-/**
- * Is the given elemental evoker currently charging?
- *
- * @param item      The evoker in question.
- * @return          Whether the player gaining xp will help recharge this item.
- */
-bool evoker_is_charging(const item_def &item)
-{
-    FixedVector<item_def*, NUM_MISCELLANY> evokers(nullptr);
-    list_charging_evokers(evokers);
-    return evokers[item.sub_type] == &item;
 }
 
 void identify_inventory()

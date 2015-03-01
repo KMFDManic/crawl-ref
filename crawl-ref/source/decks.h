@@ -8,16 +8,23 @@
 
 #include "enum.h"
 
-// DECK STRUCTURE: deck.plus is the number of cards the deck *started*
-// with, deck.plus2 is the number of cards drawn, deck.special is the
+// DECK STRUCTURE: deck.initial_cards is the number of cards the deck started
+// with, deck.used_count is* the number of cards drawn, deck.rarity is the
 // deck rarity, deck.props["cards"] holds the list of cards (with the
 // highest index card being the top card, and index 0 being the bottom
-// card), deck.props.["card_flags"] holds the flags for each card,
-// deck.props["num_marked"] is the number of marked cards left in the
-// deck.
+// card), deck.props["drawn_cards"] holds the list of drawn cards
+// (with index 0 being the first drawn), deck.props["card_flags"]
+// holds the flags for each card.
+//
+// *if deck.used_count is negative, it's actually -(cards_left). wtf.
 //
 // The card type and per-card flags are each stored as unsigned bytes,
 // for a maximum of 256 different kinds of cards and 8 bits of flags.
+
+/// The minimum number of cards a deck starts with, when generated normally.
+const int MIN_STARTING_CARDS = 4;
+/// The maximum number of cards a deck starts with, when generated normally.
+const int MAX_STARTING_CARDS = 13;
 
 enum deck_type
 {
@@ -35,7 +42,7 @@ enum card_flags_type
 {
     CFLAG_ODDITY     = (1 << 0),
     CFLAG_SEEN       = (1 << 1),
-    CFLAG_MARKED     = (1 << 2),
+                      //1 << 2
     CFLAG_PUNISHMENT = (1 << 3),
     CFLAG_DEALT      = (1 << 4),
 };
@@ -101,8 +108,8 @@ enum card_type
     CARD_HELIX,               // precision mutation alteration
     CARD_ALCHEMIST,           // health / mp for gold
 
+    CARD_WATER,               // flood squares, summon water monsters
 #if TAG_MAJOR_VERSION == 34
-    CARD_WATER,               // flood squares
     CARD_GLASS,               // make walls transparent
 #endif
     CARD_DOWSING,             // mapping/detect traps/items/monsters
@@ -155,7 +162,11 @@ void draw_from_deck_of_punishment(bool deal = false);
 bool      top_card_is_known(const item_def &item);
 card_type top_card(const item_def &item);
 
-bool is_deck(const item_def &item);
+string deck_name(uint8_t type);
+uint8_t deck_type_by_name(string name);
+uint8_t random_deck_type();
+bool is_deck_type(uint8_t type, bool allow_unided = false);
+bool is_deck(const item_def &item, bool iinfo = false);
 bool bad_deck(const item_def &item);
 colour_t deck_rarity_to_colour(deck_rarity_type rarity);
 void init_deck(item_def &item);

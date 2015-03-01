@@ -15,6 +15,7 @@
 #include "fprop.h"
 #include "goditem.h"
 #include "godprayer.h"
+#include "invent.h" // in_inventory
 #include "itemname.h"
 #include "itemprop.h"
 #include "items.h"
@@ -182,23 +183,31 @@ void ash_check_bondage(bool msg)
         else if (i <= EQ_MAX_ARMOUR)
             s = ET_ARMOUR;
         // Missing hands mean fewer rings
-        else if (you.species != SP_OCTOPODE && i == EQ_LEFT_RING &&
-                    player_mutation_level(MUT_MISSING_HAND))
+        else if (you.species != SP_OCTOPODE && i == EQ_LEFT_RING
+                 && player_mutation_level(MUT_MISSING_HAND))
+        {
             continue;
+        }
         // Octopodes don't count these slots:
-        else if (you.species == SP_OCTOPODE &&
-                 ((i == EQ_LEFT_RING || i == EQ_RIGHT_RING)
-                    || (i == EQ_RING_EIGHT
-                        && player_mutation_level(MUT_MISSING_HAND))))
+        else if (you.species == SP_OCTOPODE
+                 && ((i == EQ_LEFT_RING || i == EQ_RIGHT_RING)
+                     || (i == EQ_RING_EIGHT
+                         && player_mutation_level(MUT_MISSING_HAND))))
         {
             continue;
         }
         // *Only* octopodes count these slots:
-        else if (you.species != SP_OCTOPODE && i > EQ_AMULET)
+        else if (you.species != SP_OCTOPODE
+                 && i >= EQ_RING_ONE && i <= EQ_RING_EIGHT)
+        {
             continue;
-        // Never count the macabre finger necklace's extra ring slot.
-        else if (i == EQ_RING_AMULET)
+        }
+        // The macabre finger necklace's extra slot does count if equipped.
+        else if (!player_equip_unrand(UNRAND_FINGER_AMULET)
+                 && i == EQ_RING_AMULET)
+        {
             continue;
+        }
         else
             s = ET_JEWELS;
 
@@ -211,8 +220,9 @@ void ash_check_bondage(bool msg)
                 const item_def& item = you.inv[you.equip[i]];
                 if (item.cursed() && (i != EQ_WEAPON || is_weapon(item)))
                 {
-                    if (s == ET_WEAPON && (_two_handed() ||
-                        player_mutation_level(MUT_MISSING_HAND)))
+                    if (s == ET_WEAPON
+                        && (_two_handed()
+                            || player_mutation_level(MUT_MISSING_HAND)))
                     {
                         cursed[ET_WEAPON] = 3;
                         cursed[ET_SHIELD] = 3;
@@ -299,13 +309,10 @@ string ash_describe_bondage(int flags, bool level)
         && you.bondage[ET_WEAPON] != -1)
     {
         if (you.bondage[ET_WEAPON] == you.bondage[ET_SHIELD])
-        {
-            desc = make_stringf("Your %s are %sbound.\n",
-                                you.hand_name(true).c_str(),
-                                you.bondage[ET_WEAPON] ? "" : "not ");
-        }
+            desc = you.hands_act("are", "bound.\n");
         else
         {
+            // FIXME: what if you sacrificed a hand?
             desc = make_stringf("Your %s %s is bound but not your %s %s.\n",
                                 you.bondage[ET_WEAPON] ? "weapon" : "shield",
                                 you.hand_name(false).c_str(),
@@ -417,26 +424,6 @@ bool god_id_item(item_def& item, bool silent)
             ided |= ISFLAG_KNOW_PLUSES;
         }
     }
-    else if (you_worship(GOD_ELYVILON))
-    {
-        if ((item.base_type == OBJ_STAVES || item.base_type == OBJ_RODS)
-            && (is_evil_item(item) || is_unholy_item(item)))
-        {
-            // staff of death, evil rods
-            ided |= ISFLAG_KNOW_TYPE;
-        }
-
-        // Don't use is_{evil,unholy}_item() for weapons -- on demonic weapons
-        // the brand is irrelevant, unrands may have an innocuous brand; let's
-        // still show evil brands on unholy weapons for consistency even if this
-        // gives more information than absolutely needed.
-        brand_type brand = get_weapon_brand(item);
-        if (brand == SPWPN_DRAINING || brand == SPWPN_PAIN
-            || brand == SPWPN_VAMPIRISM || brand == SPWPN_REAPING)
-        {
-            ided |= ISFLAG_KNOW_TYPE;
-        }
-    }
 
     if (ided & ~old_ided)
     {
@@ -454,7 +441,8 @@ bool god_id_item(item_def& item, bool silent)
             mprf_nocap("%s", item.name(DESC_INVENTORY_EQUIP).c_str());
 
         seen_item(item);
-        auto_assign_item_slot(item);
+        if (in_inventory(item))
+            auto_assign_item_slot(item);
         return true;
     }
 
@@ -581,7 +569,7 @@ map<skill_type, int8_t> ash_get_boosted_skills(eq_type type)
     // Include melded.
     const item_def* wpn = you.slot_item(EQ_WEAPON, true);
     const item_def* armour = you.slot_item(EQ_BODY_ARMOUR, true);
-    const int evp = armour ? -property(*armour, PARM_EVASION) : 0;
+    const int evp = armour ? -property(*armour, PARM_EVASION) / 10 : 0;
     switch (type)
     {
     case (ET_WEAPON):
@@ -636,8 +624,8 @@ map<skill_type, int8_t> ash_get_boosted_skills(eq_type type)
 
     // Boost all spell schools and evoc (to give some appeal to melee).
     case (ET_JEWELS):
-        for (int i = SK_FIRST_MAGIC_SCHOOL; i <= SK_LAST_MAGIC; ++i)
-            boost[skill_type(i)] = bondage;
+        for (skill_type sk = SK_FIRST_MAGIC_SCHOOL; sk <= SK_LAST_MAGIC; ++sk)
+            boost[sk] = bondage;
         boost[SK_EVOCATIONS] = bondage;
         break;
 

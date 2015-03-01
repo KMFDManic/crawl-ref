@@ -12,6 +12,7 @@
 #include <cstdlib>
 #include <cstring>
 
+#include "adjust.h"
 #include "areas.h"
 #include "arena.h"
 #include "artefact.h"
@@ -22,18 +23,17 @@
 #include "cio.h"
 #include "clua.h"
 #include "colour.h"
-#include "command.h"
 #include "coord.h"
 #include "coordit.h"
 #include "dactions.h"
 #include "dbg-util.h"
 #include "decks.h"
+#include "defines.h"
 #include "delay.h"
 #include "describe.h"
 #include "dgnevent.h"
 #include "directn.h"
 #include "dungeon.h"
-#include "effects.h"
 #include "env.h"
 #include "food.h"
 #include "godpassive.h"
@@ -83,7 +83,7 @@ static void _autoinscribe_item(item_def& item);
 static void _autoinscribe_floor_items();
 static void _autoinscribe_inventory();
 static void _multidrop(vector<SelItem> tmp_items);
-static bool _merge_items_into_inv(const item_def &it, int quant_got,
+static bool _merge_items_into_inv(item_def &it, int quant_got,
                                   char &inv_slot, bool quiet);
 
 static bool will_autopickup   = false;
@@ -377,8 +377,6 @@ bool dec_mitm_item_quantity(int obj, int amount)
     {
         item.special = 0;
         invalidate_agrid(true);
-        you.redraw_armour_class = true;
-        you.redraw_evasion = true;
     }
 
     if (item.quantity == amount)
@@ -488,7 +486,7 @@ void unlink_item(int dest)
     }
     // Unlinking a newly created item, or a a temporary one, or an item in
     // the player's inventory.
-    else if (mitm[dest].pos.origin() || mitm[dest].pos.equals(-1, -1))
+    else if (mitm[dest].pos.origin() || mitm[dest].pos == ITEM_IN_INVENTORY)
     {
         mitm[dest].pos.reset();
         mitm[dest].link = NON_ITEM;
@@ -866,11 +864,14 @@ void pickup_menu(int item_link)
     item_list_on_square(items, item_link);
     ASSERT(items.size());
 
+    string prompt = "Pick up what? " + slot_description()
 #ifdef TOUCH_UI
-    string prompt = "Pick up what? (<Enter> or tap header to pick up)";
+                  + " (<Enter> or tap header to pick up)"
 #else
-    string prompt = "Pick up what? (_ for help)";
+                  + " (_ for help)"
 #endif
+                  ;
+
     if (items.size() == 1 && items[0]->quantity > 1)
         prompt = "Select pick up quantity by entering a number, then select the item";
     vector<SelItem> selected = select_items(items, prompt.c_str(), false,
@@ -1562,10 +1563,12 @@ int find_free_slot(const item_def &i)
     // Return first free slot
     for (slot = 0; slot < ENDOFPACK; ++slot)
         if (!you.inv[slot].defined())
+        {
             if (disliked[slot])
                 badslot = slot;
             else
                 return slot;
+        }
 
     // If the least preferred slot is the only choice, so be it.
     return badslot;
@@ -1585,35 +1588,6 @@ static void _got_item(item_def& item)
 void get_gold(const item_def& item, int quant, bool quiet)
 {
     you.attribute[ATTR_GOLD_FOUND] += quant;
-
-    if (player_under_penance(GOD_GOZAG)
-        && item.base_type == OBJ_GOLD) // no taxing Curse of Gozag gold
-    {
-        int tax = div_rand_round(quant, 10);
-        if (tax)
-        {
-            if (!quiet)
-            {
-                if (tax >= quant)
-                {
-                    simple_god_message(" claims this gold.",
-                                       GOD_GOZAG);
-                }
-                else
-                {
-                    simple_god_message(" claims a portion of the gold.",
-                                       GOD_GOZAG);
-                }
-            }
-            int penance = div_rand_round(tax, 10);
-            if (penance)
-                dec_penance(GOD_GOZAG, penance);
-
-            quant -= tax;
-            if (quant <= 0)
-                return;
-        }
-    }
 
     if (you_worship(GOD_ZIN) && !(item.flags & ISFLAG_THROWN))
         quant -= zin_tithe(item, quant, quiet);
@@ -1669,7 +1643,7 @@ static bool _put_item_in_inv(item_def& it, int quant_got, bool quiet, bool& put_
     {
         put_in_inv = true;
         // if you succeeded, actually reduce the number in the original stack
-        if (is_perishable_stack(it) && quant_got != it.quantity)
+        if (quant_got != it.quantity && is_perishable_stack(it))
             for (int i = 0; i < quant_got; i++)
                 remove_oldest_perishable_item(it);
 
@@ -1871,13 +1845,17 @@ item_def *auto_assign_item_slot(item_def& item)
             continue;
         for (char i : mapping.second)
         {
-            const int index = letter_to_index(i);
-            if (isaalpha(i)
-                && !(you.inv[index].defined()
-                     && mapping.first.matches(you.inv[index].name(DESC_QUALNAME))))
+            if (isaalpha(i))
             {
-                newslot = index;
-                break;
+                const int index = letter_to_index(i);
+
+                // Don't swap with an item matched by the same rule.
+                if (!you.inv[index].defined()
+                    || !mapping.first.matches(you.inv[index].name(DESC_QUALNAME)))
+                {
+                    newslot = index;
+                    break;
+                }
             }
         }
         if (newslot != -1 && newslot != item.link)
@@ -1899,7 +1877,7 @@ item_def *auto_assign_item_slot(item_def& item)
  * @param quiet           Suppresses pickup messages.
  * @return                The inventory slot the item was placed in.
  */
-static int _place_item_in_free_slot(const item_def &it, int quant_got,
+static int _place_item_in_free_slot(item_def &it, int quant_got,
                                     bool quiet)
 {
     int freeslot = find_free_slot(it);
@@ -1926,7 +1904,7 @@ static int _place_item_in_free_slot(const item_def &it, int quant_got,
     note_inscribe_item(item);
 
     // avoid blood potion timer/stack size mismatch
-    if (is_perishable_stack(it) && quant_got != it.quantity)
+    if (quant_got != it.quantity && is_perishable_stack(it))
         remove_newest_perishable_item(item);
 
     if (crawl_state.game_is_hints())
@@ -1963,7 +1941,7 @@ static int _place_item_in_free_slot(const item_def &it, int quant_got,
  *              item pickup failure) aren't printed.
  * @return Whether something was successfully picked up.
  */
-static bool _merge_items_into_inv(const item_def &it, int quant_got,
+static bool _merge_items_into_inv(item_def &it, int quant_got,
                                   char &inv_slot, bool quiet)
 {
     inv_slot = -1;
@@ -1990,15 +1968,6 @@ static bool _merge_items_into_inv(const item_def &it, int quant_got,
     {
         _get_orb(it, quiet);
         return true;
-    }
-
-    // BEWARE... THE CURSE OF GOZAG!
-    if (player_under_penance(GOD_GOZAG))
-    {
-        const int goldified_count = gozag_goldify(it, quant_got, quiet);
-        quant_got -= goldified_count;
-        if (quant_got <= 0)
-            return true;
     }
 
     // attempt to merge into an existing stack, if possible
@@ -2196,7 +2165,7 @@ void move_item_stack_to_grid(const coord_def& from, const coord_def& to)
 }
 
 // Returns false if no items could be dropped.
-bool copy_item_to_grid(const item_def &item, const coord_def& p,
+bool copy_item_to_grid(item_def &item, const coord_def& p,
                         int quant_drop, bool mark_dropped, bool silent)
 {
     ASSERT_IN_BOUNDS(p);
@@ -2267,12 +2236,10 @@ bool copy_item_to_grid(const item_def &item, const coord_def& p,
     }
 
     move_item_to_grid(&new_item_idx, p, true);
-    if (is_perishable_stack(item) && item.quantity != quant_drop)
-    {
-        // In the case of a partial drop, since only the oldest items have
-        // been dropped, remove the newest ones.
+    // In the case of a partial drop, since only the oldest items have
+    // been dropped, remove the newest ones.
+    if (item.quantity != quant_drop && is_perishable_stack(item))
         remove_newest_perishable_item(new_item);
-    }
 
     return true;
 }
@@ -2280,12 +2247,14 @@ bool copy_item_to_grid(const item_def &item, const coord_def& p,
 coord_def item_pos(const item_def &item)
 {
     coord_def pos = item.pos;
-    if (pos.equals(-2, -2))
+    if (pos == ITEM_IN_MONSTER_INVENTORY)
+    {
         if (const monster *mon = item.holding_monster())
             pos = mon->pos();
         else
             die("item held by an invalid monster");
-    else if (pos.equals(-1, -1))
+    }
+    else if (pos == ITEM_IN_INVENTORY)
         pos = you.pos();
     return pos;
 }
@@ -2421,12 +2390,15 @@ bool drop_item(int item_dropped, int quant_drop)
 
     feat_destroys_item(my_grid, you.inv[item_dropped], !quiet);
 
-    if (is_perishable_stack(you.inv[item_dropped])
-        && you.inv[item_dropped].quantity != quant_drop)
+    if (you.inv[item_dropped].quantity != quant_drop)
     {
-        // Oldest potions have been dropped.
-        for (int i = 0; i < quant_drop; i++)
-            remove_oldest_perishable_item(you.inv[item_dropped]);
+        if (is_perishable_stack(you.inv[item_dropped]))
+        {
+            // Oldest potions have been dropped.
+            for (int i = 0; i < quant_drop; i++)
+                remove_oldest_perishable_item(you.inv[item_dropped]);
+        }
+        // XP evoker has been handled in copy_item_to_grid
     }
 
     dec_inv_item_quantity(item_dropped, quant_drop);
@@ -2556,12 +2528,15 @@ void drop()
     }
 
     vector<SelItem> tmp_items;
+    string prompt = "Drop what? " + slot_description()
 #ifdef TOUCH_UI
-    tmp_items = prompt_invent_items("Drop what? (<Enter> or tap header to drop)",
-                                    MT_DROP,
+                  + " (<Enter> or tap header to drop)"
 #else
-    tmp_items = prompt_invent_items("Drop what? (_ for help)", MT_DROP,
+                  + " (_ for help)"
 #endif
+                  ;
+
+    tmp_items = prompt_invent_items(prompt.c_str(), MT_DROP,
                                      -1, nullptr, true, true, 0,
                                      &Options.drop_filter, _drop_selitem_text,
                                      &items_for_multidrop);
@@ -2751,26 +2726,18 @@ static bool _is_option_autopickup(const item_def &item)
         return false;
 
 #ifdef CLUA_BINDINGS
-    bool res = clua.callbooleanfn(false, "ch_force_autopickup", "is",
-                                        &item, iname.c_str());
+    maybe_bool res = clua.callmaybefn("ch_force_autopickup", "is",
+                                      &item, iname.c_str());
     if (!clua.error.empty())
     {
         mprf(MSGCH_ERROR, "ch_force_autopickup failed: %s",
              clua.error.c_str());
     }
 
-    if (res)
+    if (res == MB_TRUE)
         return true;
 
-    res = clua.callbooleanfn(false, "ch_deny_autopickup", "is",
-                             &item, iname.c_str());
-    if (!clua.error.empty())
-    {
-        mprf(MSGCH_ERROR, "ch_deny_autopickup failed: %s",
-             clua.error.c_str());
-    }
-
-    if (res)
+    if (res == MB_FALSE)
         return false;
 #endif
 
@@ -3266,7 +3233,7 @@ int item_def::armour_rating() const
 
 monster* item_def::holding_monster() const
 {
-    if (!pos.equals(-2, -2))
+    if (pos != ITEM_IN_MONSTER_INVENTORY)
         return nullptr;
     const int midx = link - NON_ITEM - 1;
     if (invalid_monster_index(midx))
@@ -3275,16 +3242,18 @@ monster* item_def::holding_monster() const
     return &menv[midx];
 }
 
-void item_def::set_holding_monster(int midx)
+void item_def::set_holding_monster(const monster& mon)
 {
-    ASSERT(midx != NON_MONSTER);
-    pos.set(-2, -2);
-    link = NON_ITEM + 1 + midx;
+    pos = ITEM_IN_MONSTER_INVENTORY;
+    link = NON_ITEM + 1 + mon.mindex();
 }
 
+// Note: should not check menv, since it may be called by link_items() from
+// tags.cc before monsters are unmarshalled.
 bool item_def::held_by_monster() const
 {
-    return pos.equals(-2, -2) && !invalid_monster_index(link - NON_ITEM - 1);
+    return pos == ITEM_IN_MONSTER_INVENTORY
+             && !invalid_monster_index(link - NON_ITEM - 1);
 }
 
 // Note:  This function is to isolate all the checks to see if
@@ -3406,42 +3375,13 @@ colour_t item_def::armour_colour() const
     if (is_artefact(*this))
         return randart_colour();
 
+    if (armour_type_is_hide(sub_type, true))
+        return mons_class_colour(monster_for_hide((armour_type)sub_type));
+
+
     // TODO: move (some of?) this into itemprop.cc
     switch (sub_type)
     {
-        case ARM_FIRE_DRAGON_HIDE:
-        case ARM_FIRE_DRAGON_ARMOUR:
-            return mons_class_colour(MONS_FIRE_DRAGON);
-        case ARM_TROLL_HIDE:
-        case ARM_TROLL_LEATHER_ARMOUR:
-            return mons_class_colour(MONS_TROLL);
-        case ARM_ICE_DRAGON_HIDE:
-        case ARM_ICE_DRAGON_ARMOUR:
-            return mons_class_colour(MONS_ICE_DRAGON);
-        case ARM_STEAM_DRAGON_HIDE:
-        case ARM_STEAM_DRAGON_ARMOUR:
-            return mons_class_colour(MONS_STEAM_DRAGON);
-        case ARM_MOTTLED_DRAGON_HIDE:
-        case ARM_MOTTLED_DRAGON_ARMOUR:
-            return mons_class_colour(MONS_MOTTLED_DRAGON);
-        case ARM_STORM_DRAGON_HIDE:
-        case ARM_STORM_DRAGON_ARMOUR:
-            return mons_class_colour(MONS_STORM_DRAGON);
-        case ARM_GOLD_DRAGON_HIDE:
-        case ARM_GOLD_DRAGON_ARMOUR:
-            return mons_class_colour(MONS_GOLDEN_DRAGON);
-        case ARM_SWAMP_DRAGON_HIDE:
-        case ARM_SWAMP_DRAGON_ARMOUR:
-            return mons_class_colour(MONS_SWAMP_DRAGON);
-        case ARM_PEARL_DRAGON_HIDE:
-        case ARM_PEARL_DRAGON_ARMOUR:
-            return mons_class_colour(MONS_PEARL_DRAGON);
-        case ARM_SHADOW_DRAGON_HIDE:
-        case ARM_SHADOW_DRAGON_ARMOUR:
-            return mons_class_colour(MONS_SHADOW_DRAGON);
-        case ARM_QUICKSILVER_DRAGON_HIDE:
-        case ARM_QUICKSILVER_DRAGON_ARMOUR:
-            return mons_class_colour(MONS_QUICKSILVER_DRAGON);
         case ARM_CLOAK:
             return WHITE;
         case ARM_NAGA_BARDING:
@@ -3797,7 +3737,7 @@ colour_t item_def::miscellany_colour() const
 {
     ASSERT(base_type == OBJ_MISCELLANY);
 
-    if (is_deck(*this) || sub_type == MISC_DECK_UNKNOWN)
+    if (is_deck(*this, true))
         return deck_rarity_to_colour(deck_rarity);
 
     if (item_is_rune(*this))
@@ -4108,7 +4048,8 @@ static void _rune_from_specs(const char* _specs, item_def &item)
     }
 }
 
-static void _deck_from_specs(const char* _specs, item_def &item)
+static void _deck_from_specs(const char* _specs, item_def &item,
+                             bool create_for_real)
 {
     string specs    = _specs;
     string type_str = "";
@@ -4128,28 +4069,15 @@ static void _deck_from_specs(const char* _specs, item_def &item)
         trim_string(type_str);
     }
 
-    misc_item_type types[] =
-    {
-        MISC_DECK_OF_ESCAPE,
-        MISC_DECK_OF_DESTRUCTION,
-        MISC_DECK_OF_SUMMONING,
-        MISC_DECK_OF_WONDERS,
-        MISC_DECK_OF_PUNISHMENT,
-        MISC_DECK_OF_WAR,
-        MISC_DECK_OF_CHANGES,
-        MISC_DECK_OF_DEFENCE,
-        MISC_DECK_UNKNOWN,
-    };
-
-    item.special  = DECK_RARITY_COMMON;
-    item.sub_type = MISC_DECK_UNKNOWN;
+    item.deck_rarity = DECK_RARITY_COMMON;
+    item.sub_type    = MISC_DECK_UNKNOWN;
 
     if (!type_str.empty())
     {
-        for (int i = 0; types[i] != MISC_DECK_UNKNOWN; ++i)
+        for (auto type : deck_types)
         {
-            item.sub_type = types[i];
-            item.plus     = 1;
+            item.sub_type = type;
+            item.initial_cards = 1;
             init_deck(item);
             // Remove "plain " from front.
             string name = item.name(DESC_PLAIN).substr(6);
@@ -4160,32 +4088,45 @@ static void _deck_from_specs(const char* _specs, item_def &item)
         }
     }
 
-    if (item.sub_type == MISC_DECK_UNKNOWN)
+    if (item.sub_type == MISC_DECK_UNKNOWN && !create_for_real)
     {
-        while (true)
+        // bail
+        item.base_type = OBJ_UNASSIGNED;
+        return;
+    }
+
+    while (item.sub_type == MISC_DECK_UNKNOWN)
+    {
+        mprf(MSGCH_PROMPT,
+             "[a] escape     [b] destruction [c] summoning [d] wonders");
+        mprf(MSGCH_PROMPT,
+             "[e] war         [f] changes  [g] defence");
+        mpr("Which deck (ESC to exit)? ");
+
+        const int keyin = toalower(get_ch());
+
+        if (key_is_escape(keyin) || keyin == ' '
+            || keyin == '\r' || keyin == '\n')
         {
-            mprf(MSGCH_PROMPT,
-"[a] escape     [b] destruction [c] summoning [d] wonders");
-            mprf(MSGCH_PROMPT,
-"[e] punishment [f] war         [g] changes  [h] defence");
-            mpr("Which deck (ESC to exit)? ");
-
-            const int keyin = toalower(get_ch());
-
-            if (key_is_escape(keyin) || keyin == ' '
-                || keyin == '\r' || keyin == '\n')
-            {
-                canned_msg(MSG_OK);
-                item.base_type = OBJ_UNASSIGNED;
-                return;
-            }
-
-            if (keyin < 'a' || keyin > 'h')
-                continue;
-
-            item.sub_type = types[keyin - 'a'];
-            break;
+            canned_msg(MSG_OK);
+            item.base_type = OBJ_UNASSIGNED;
+            return;
         }
+
+        static const map<char, misc_item_type> deckmap =
+        {
+            { 'a', MISC_DECK_OF_ESCAPE },
+            { 'b', MISC_DECK_OF_DESTRUCTION },
+            { 'c', MISC_DECK_OF_SUMMONING },
+            { 'd', MISC_DECK_OF_WONDERS },
+            { 'e', MISC_DECK_OF_WAR },
+            { 'f', MISC_DECK_OF_CHANGES },
+            { 'g', MISC_DECK_OF_DEFENCE }
+        };
+
+        const misc_item_type *deck_type = map_find(deckmap, keyin);
+        if (deck_type)
+            item.sub_type = *deck_type;
     }
 
     const char* rarities[] =
@@ -4204,6 +4145,9 @@ static void _deck_from_specs(const char* _specs, item_def &item)
             rarity_val = i;
             break;
         }
+
+    if (rarity_val == -1 && !create_for_real)
+        rarity_val = 0;
 
     if (rarity_val == -1)
     {
@@ -4240,26 +4184,29 @@ static void _deck_from_specs(const char* _specs, item_def &item)
         static_cast<deck_rarity_type>(DECK_RARITY_COMMON + rarity_val);
     item.special = rarity;
 
-    int num = prompt_for_int("How many cards? ", false);
+    const int num_cards =
+        create_for_real ? prompt_for_int("How many cards? ", false)
+                        : 1;
 
-    if (num <= 0)
+    if (num_cards <= 0)
     {
         canned_msg(MSG_OK);
         item.base_type = OBJ_UNASSIGNED;
         return;
     }
 
-    item.plus = num;
+    item.initial_cards = num_cards;
 
     init_deck(item);
 }
 
-static void _rune_or_deck_from_specs(const char* specs, item_def &item)
+static void _rune_or_deck_from_specs(const char* specs, item_def &item,
+                                     bool create_for_real)
 {
     if (strstr(specs, "rune"))
         _rune_from_specs(specs, item);
     else if (strstr(specs, "deck") || strstr(specs, "card"))
-        _deck_from_specs(specs, item);
+        _deck_from_specs(specs, item, create_for_real);
 }
 
 static bool _book_from_spell(const char* specs, item_def &item)
@@ -4280,7 +4227,7 @@ static bool _book_from_spell(const char* specs, item_def &item)
     return false;
 }
 
-bool get_item_by_name(item_def *item, char* specs,
+bool get_item_by_name(item_def *item, const char* specs,
                       object_class_type class_wanted, bool create_for_real)
 {
     int            type_wanted    = -1;
@@ -4302,7 +4249,7 @@ bool get_item_by_name(item_def *item, char* specs,
     if (class_wanted == OBJ_MISCELLANY)
     {
         // Leaves object unmodified if it wasn't a rune or deck.
-        _rune_or_deck_from_specs(specs, *item);
+        _rune_or_deck_from_specs(specs, *item, create_for_real);
 
         if (item->base_type == OBJ_UNASSIGNED)
         {
@@ -4583,7 +4530,7 @@ item_info get_item_info(const item_def& item)
     {
         ii.link = item.link;
         ii.slot = item.slot;
-        ii.pos = coord_def(-1, -1);
+        ii.pos = ITEM_IN_INVENTORY;
     }
     else
         ii.pos = item.pos;
@@ -4728,10 +4675,6 @@ item_info get_item_info(const item_def& item)
         if (ii.sub_type == MISC_DECK_UNKNOWN)
             ii.deck_rarity = item.deck_rarity;
 
-        // Preserve inert/charged state but not the actual numbers.
-        if (is_xp_evoker(item))
-            ii.evoker_debt = !!item.evoker_debt;
-
         if (is_deck(item))
         {
             ii.deck_rarity = item.deck_rarity;
@@ -4739,34 +4682,19 @@ item_info get_item_info(const item_def& item)
             const int num_cards = cards_in_deck(item);
             CrawlVector info_cards (SV_BYTE);
             CrawlVector info_card_flags (SV_BYTE);
-            bool found_unmarked = false;
-            for (int i = 0; i < num_cards; ++i)
-            {
-                uint8_t flags;
-                const card_type card = get_card_and_flags(item, -i-1, flags);
-                if (flags & CFLAG_MARKED)
-                {
-                    info_cards.push_back((char)card);
-                    info_card_flags.push_back((char)flags);
-                }
-                else if (!found_unmarked)
-                {
-                    // special card to tell at which point cards are no longer
-                    // continuous
-                    info_cards.push_back((char)0);
-                    info_card_flags.push_back((char)0);
-                    found_unmarked = true;
-                }
-            }
+
             // TODO: this leaks both whether the seen cards are still there
             // and their order: the representation needs to be fixed
 
             // The above comment seems obsolete now that Mark Four is gone.
+
+            // I don't think so... Stack Five has a quite similar effect
+            // if you abanadon Nemelex and get the card shuffled.
             for (int i = 0; i < num_cards; ++i)
             {
                 uint8_t flags;
                 const card_type card = get_card_and_flags(item, -i-1, flags);
-                if (flags & CFLAG_SEEN && !(flags & CFLAG_MARKED))
+                if (flags & CFLAG_SEEN)
                 {
                     info_cards.push_back((char)card);
                     info_card_flags.push_back((char)flags);

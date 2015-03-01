@@ -39,10 +39,8 @@ Elyvilon
 
 Elyvilon the Healer welcomes all kind souls prepared to help others. Those
 individuals can expect to gain powerful healing abilities, by which they can
-avoid bloodshed. Elyvilon appreciates the destruction of weapons, though more
-pious worshippers must find and destroy unholy or evil weapons to gain piety
-in this way. Elyvilon's followers can convert to the Shining One or Zin while
-keeping some piety.
+avoid bloodshed. Elyvilon appreciates exploration of the dungeon. Elyvilon's
+followers can convert to the Shining One or Zin while keeping some piety.
 %%%%
 Fedhas
 
@@ -247,8 +245,7 @@ For Gozag, both flesh and food are inferior to wealth, and therefore all
 corpses are turned into gold piles. These piles of gold may briefly distract
 nearby monsters. Stalwarts can order immediate help in the form of potions,
 with prices being dictated by the Greedy. Particularly well-off adherents may
-attract shopkeepers into the dungeon, and even bribe entire branches of the
-dungeon. Gozag will also duplicate any one non-artefact item for a servant.
+attract shopkeepers into the dungeon, and even bribe entire branches.
 %%%%
 Jiyva powers
 
@@ -444,11 +441,10 @@ Gozag wrath
 
 The first of Gozag's punishments is commercial: all shops opened through
 Gozag's intervention shut their doors forever. The disloyal are advised to
-finish their shopping before they launch their betrayal. Other punishments are
-more pertinent to the penurious: potions fail when they are needed most, or are
-used to aid heretics' enemies. Newly-found gold is stolen out of their hands,
-and other, useful items are transformed *into* gold - little use that it is
-without Gozag's sponsorship!
+finish their shopping before they launch their betrayal. For as long as Gozag
+remains angered, potions will have a chance to fail when quaffed, and any
+foes that are encountered may be granted potions of their own to assist them
+against the ex-worshipper.
 %%%%
 Jiyva wrath
 
@@ -474,7 +470,9 @@ permeable. Space warps, hurling victims across the dungeon, or even directly
 into the Abyss; and when that's not enough, Lugonu reaches out and sends
 minions out from the Abyss to assault the offender directly. Inexperienced
 adventurers face small abominations and thrashing horrors; veterans fight
-tentacled starspawn and starcursed masses.
+tentacled starspawn and starcursed masses. Lugonu does not forgive easily, and
+will not allow ex-worshippers to rejoin the fold while Lugonu's wrath still
+lasts.
 %%%%
 Makhleb wrath
 

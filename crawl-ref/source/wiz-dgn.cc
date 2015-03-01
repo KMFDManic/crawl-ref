@@ -37,10 +37,12 @@
 static dungeon_feature_type _find_appropriate_stairs(bool down)
 {
     if (player_in_branch(BRANCH_PANDEMONIUM))
+    {
         if (down)
             return DNGN_TRANSIT_PANDEMONIUM;
         else
             return DNGN_EXIT_PANDEMONIUM;
+    }
 
     int depth = you.depth;
     if (down)
@@ -56,24 +58,7 @@ static dungeon_feature_type _find_appropriate_stairs(bool down)
     }
     // Going up from top level of branch
     else if (depth == 0)
-    {
-        // Special cases
-        if (player_in_branch(BRANCH_VESTIBULE))
-            return DNGN_EXIT_HELL;
-        else if (player_in_branch(BRANCH_ABYSS))
-            return DNGN_EXIT_ABYSS;
-        else if (player_in_branch(BRANCH_DUNGEON))
-            return DNGN_STONE_STAIRS_UP_I;
-
-        dungeon_feature_type stairs = your_branch().exit_stairs;
-
-        if (!feat_is_branch_exit(stairs))
-        {
-            mpr("This branch has no exit stairs defined.");
-            return DNGN_UNSEEN;
-        }
-        return stairs;
-    }
+        return your_branch().exit_stairs;
     // Branch non-edge cases
     else if (depth >= 1)
     {

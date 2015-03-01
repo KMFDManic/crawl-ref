@@ -61,6 +61,7 @@
 #include "terrain.h"
 #include "tilepick.h"
 #include "tileview.h"
+#include "timed_effects.h"
 #include "traps.h"
 #include "unicode.h"
 #include "unwind.h"
@@ -297,7 +298,7 @@ void set_resist(resists_t &all, mon_resist_flags res, int lev)
     }
 
     ASSERT_RANGE(lev, -3, 5);
-    all = all & ~(res * 7) | res * (lev & 7);
+    all = (all & ~(res * 7)) | (res * (lev & 7));
 }
 
 int get_mons_class_ac(monster_type mc)
@@ -312,10 +313,34 @@ int get_mons_class_ev(monster_type mc)
     return me ? me->ev : get_monster_data(MONS_PROGRAM_BUG)->ev;
 }
 
+static resists_t _apply_holiness_resists(resists_t resists, mon_holy_type mh)
+{
+    // Undead get full poison resistance.
+    if (mh == MH_UNDEAD)
+        resists = (resists & ~(MR_RES_POISON * 7)) | (MR_RES_POISON * 3);
+
+    // Everything but natural creatures have full rNeg. Set here for the
+    // benefit of the monster_info constructor.  If you change this, also
+    // change monster::res_negative_energy.
+    if (mh != MH_NATURAL)
+        resists = (resists & ~(MR_RES_NEG * 7)) | (MR_RES_NEG * 3);
+
+    return resists;
+}
+
 resists_t get_mons_class_resists(monster_type mc)
 {
     const monsterentry *me = get_monster_data(mc);
-    return me ? me->resists : get_monster_data(MONS_PROGRAM_BUG)->resists;
+    const resists_t resists = me ? me->resists
+                                 : get_monster_data(MONS_PROGRAM_BUG)->resists;
+    // Don't apply fake holiness resists.
+    if (mons_is_sensed(mc))
+        return resists;
+
+    // Assumes that, when a monster's holiness differs from other monsters
+    // of the same type, that only adds resistances, never removes them.
+    // Currently the only such case is MF_FAKE_UNDEAD.
+    return _apply_holiness_resists(resists, mons_class_holiness(mc));
 }
 
 resists_t get_mons_resists(const monster* mon)
@@ -338,18 +363,9 @@ resists_t get_mons_resists(const monster* mon)
             resists |= get_mons_class_resists(subspecies);
     }
 
-    // Undead get full poison resistance. This is set from here in case
-    // they're undead due to the MF_FAKE_UNDEAD flag.
-    if (mon->holiness() == MH_UNDEAD)
-        resists = resists & ~(MR_RES_POISON * 7) | MR_RES_POISON * 3;
-
-    // Everything but natural creatures have full rNeg. Set here for the
-    // benefit of the monster_info constructor.  If you change this, also
-    // change monster::res_negative_energy.
-    if (mon->holiness() != MH_NATURAL)
-        resists = resists & ~(MR_RES_NEG * 7) | MR_RES_NEG * 3;
-
-    return resists;
+    // This is set from here in case they're undead due to the
+    // MF_FAKE_UNDEAD flag. See the comment in get_mons_class_resists.
+    return _apply_holiness_resists(resists, mon->holiness());
 }
 
 int get_mons_resist(const monster* mon, mon_resist_flags res)
@@ -526,31 +542,31 @@ int monster::scan_artefacts(artefact_prop_type ra_prop, bool calc_unid,
         if (weap != NON_ITEM && mitm[weap].base_type == OBJ_WEAPONS
             && is_artefact(mitm[weap]))
         {
-            ret += artefact_wpn_property(mitm[weap], ra_prop);
+            ret += artefact_property(mitm[weap], ra_prop);
         }
 
         if (second != NON_ITEM && mitm[second].base_type == OBJ_WEAPONS
             && is_artefact(mitm[second]) && mons_wields_two_weapons(this))
         {
-            ret += artefact_wpn_property(mitm[second], ra_prop);
+            ret += artefact_property(mitm[second], ra_prop);
         }
 
         if (armour != NON_ITEM && mitm[armour].base_type == OBJ_ARMOUR
             && is_artefact(mitm[armour]))
         {
-            ret += artefact_wpn_property(mitm[armour], ra_prop);
+            ret += artefact_property(mitm[armour], ra_prop);
         }
 
         if (shld != NON_ITEM && mitm[shld].base_type == OBJ_ARMOUR
             && is_artefact(mitm[shld]))
         {
-            ret += artefact_wpn_property(mitm[shld], ra_prop);
+            ret += artefact_property(mitm[shld], ra_prop);
         }
 
         if (jewellery != NON_ITEM && mitm[jewellery].base_type == OBJ_JEWELLERY
             && is_artefact(mitm[jewellery]))
         {
-            ret += artefact_wpn_property(mitm[jewellery], ra_prop);
+            ret += artefact_property(mitm[jewellery], ra_prop);
         }
     }
 
@@ -1021,6 +1037,7 @@ int mons_demon_tier(monster_type mc)
     case 'C':
         if (mc != MONS_ANTAEUS)
             return 0;
+        // intentional fall-through for Antaeus
     case '&':
         return -1;
     case '1':
@@ -1518,18 +1535,10 @@ bool mons_can_use_stairs(const monster* mon)
     if (!mons_class_can_use_stairs(mon->type))
         return false;
 
-    // Check summon status
-    int stype = 0;
-    // Other permanent summons can always use stairs
-    if (mon->is_summoned(0, &stype) && !mon->is_perm_summoned()
-        && stype > 0 && stype < NUM_SPELLS)
-    {
-        // Allow uncapped summons to use stairs. This means creatures
-        // from misc evokables, temporary god summons, etc. These tend
-        // to be balanced by other means; however this could use a review
-        // and perhaps needs a whilelist (or long-duration vs. short-duration).
-        return !summons_are_capped(static_cast<spell_type>(stype));
-    }
+    // Summons can't use stairs.
+    if (mon->has_ench(ENCH_ABJ) || mon->has_ench(ENCH_FAKE_ABJURATION))
+        return false;
+
     // Everything else is fine
     return true;
 }
@@ -2162,7 +2171,7 @@ static vector<mon_spellbook_type> _mons_spellbook_list(monster_type mon_type)
                  MST_DEEP_ELF_MAGE_V };
 
     case MONS_FAUN:
-        return { MST_FAUN_I, MST_FAUN_II, MST_FAUN_III };
+        return { MST_FAUN_I, MST_FAUN_II };
 
     case MONS_GREATER_MUMMY:
         return { MST_GREATER_MUMMY_I, MST_GREATER_MUMMY_II,
@@ -3424,10 +3433,9 @@ bool mons_has_incapacitating_spell(const monster* mon, const actor* foe)
 static bool _mons_has_usable_ranged_weapon(const monster* mon)
 {
     // Ugh.
-    monster* mnc = const_cast<monster* >(mon);
-    const item_def *weapon  = mnc->launcher();
-    const item_def *primary = mnc->mslot_item(MSLOT_WEAPON);
-    const item_def *missile = mnc->missiles();
+    const item_def *weapon  = mon->launcher();
+    const item_def *primary = mon->mslot_item(MSLOT_WEAPON);
+    const item_def *missile = mon->missiles();
 
     // We don't have a usable ranged weapon if a different cursed weapon
     // is presently equipped.
@@ -3437,7 +3445,7 @@ static bool _mons_has_usable_ranged_weapon(const monster* mon)
     if (!missile)
         return false;
 
-    return is_launched(mnc, weapon, *missile);
+    return is_launched(mon, weapon, *missile);
 }
 
 bool mons_has_ranged_attack(const monster* mon)
@@ -3451,8 +3459,7 @@ bool mons_has_incapacitating_ranged_attack(const monster* mon, const actor* foe)
     if (!_mons_has_usable_ranged_weapon(mon))
         return false;
 
-    monster* mnc = const_cast<monster* >(mon);
-    const item_def *missile = mnc->missiles();
+    const item_def *missile = mon->missiles();
 
     if (missile && missile->sub_type == MI_THROWING_NET)
         return true;
@@ -3915,6 +3922,50 @@ static string _get_species_insult(const string &species, const string &type)
     return insult;
 }
 
+// From should be of the form "prefix @tag@". Replaces all substrings
+// of the form "prefix @tag@" with to, and all strings of the form
+// "prefix @tag/alt@" with either to (if nonempty) or "prefix alt".
+static string _replace_speech_tag(string msg, string from, const string &to)
+{
+    if (from.empty())
+        return msg;
+    msg = replace_all(msg, from, to);
+
+    // Change the @ to a / for the next search
+    from[from.size() - 1] = '/';
+
+    // @tag/alternative@
+    size_t pos = 0;
+    while ((pos = msg.find(from, pos)) != string::npos)
+    {
+        // beginning of tag
+        const size_t at_pos = msg.find('@', pos);
+        // begining of alternative
+        const size_t alt_pos = pos + from.size();
+        // end of tag (one-past-the-end of alternative)
+        const size_t alt_end = msg.find('@', alt_pos);
+
+        // unclosed @tag/alt, or "from" has no @: leave it alone.
+        if (alt_end == string::npos || at_pos == string::npos)
+            break;
+
+        if (to.empty())
+        {
+            // Replace only the @...@ part.
+            msg.replace(at_pos, alt_end - at_pos + 1,
+                        msg.substr(alt_pos, alt_end - alt_pos));
+            pos = at_pos + (alt_end - alt_pos);
+        }
+        else
+        {
+            // Replace the whole from string, up to the second @
+            msg.replace(pos, alt_end - pos + 1, to);
+            pos += to.size();
+        }
+    }
+    return msg;
+}
+
 // Replaces the "@foo@" strings in monster shout and monster speak
 // definitions.
 string do_mon_str_replacements(const string &in_msg, const monster* mons,
@@ -3945,8 +3996,11 @@ string do_mon_str_replacements(const string &in_msg, const monster* mons,
     {
         foe_species = species_name(you.species, true);
 
-        msg = replace_all(msg, " @to_foe@", "");
-        msg = replace_all(msg, " @at_foe@", "");
+        msg = _replace_speech_tag(msg, " @to_foe@", "");
+        msg = _replace_speech_tag(msg, " @at_foe@", "");
+
+        msg = _replace_speech_tag(msg, " @to_foe@", "");
+        msg = _replace_speech_tag(msg, " @at_foe@", "");
 
         msg = replace_all(msg, "@player_only@", "");
         msg = replace_all(msg, " @foe,@", ",");
@@ -3986,10 +4040,10 @@ string do_mon_str_replacements(const string &in_msg, const monster* mons,
             prep = "to";
         msg = replace_all(msg, "@says@ @to_foe@", "@says@ " + prep + " @foe@");
 
-        msg = replace_all(msg, " @to_foe@", " to @foe@");
-        msg = replace_all(msg, " @at_foe@", " at @foe@");
-        msg = replace_all(msg, "@foe,@",    "@foe@,");
+        msg = _replace_speech_tag(msg, " @to_foe@", " to @foe@");
+        msg = _replace_speech_tag(msg, " @at_foe@", " at @foe@");
 
+        msg = replace_all(msg, "@foe,@", "@foe@,");
         msg = replace_all(msg, "@foe_possessive@", "@foe@'s");
         msg = replace_all(msg, "@foe@", foe_name);
         msg = replace_all(msg, "@Foe@", uppercase_first(foe_name));
@@ -4618,7 +4672,7 @@ void debug_monspells()
                                          (int) (it - begin(mons_books)));
             }
             else
-                book_name = make_stringf("%s", mons_name);
+                book_name = mons_name;
         }
 
         const char * const bknm = book_name.c_str();
@@ -4633,7 +4687,7 @@ void debug_monspells()
             {
                 fails += make_stringf("Book %s contains invalid spell %d\n",
                                       bknm, spslot.spell);
-                spell_name = make_stringf("%d", spslot.spell);
+                spell_name = to_string(spslot.spell);
             }
             else
                 spell_name = spell_title(spslot.spell);

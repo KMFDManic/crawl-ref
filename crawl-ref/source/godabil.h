@@ -19,6 +19,23 @@
 #define PURITY_SAC_KEY "current_purity_sacrifice"
 #define ARCANA_SAC_KEY "current_arcane_sacrifices"
 
+const char * const GOZAG_POTIONS_KEY = "gozag_potions%d";
+const char * const GOZAG_PRICE_KEY = "gozag_price%d";
+
+const char * const GOZAG_SHOPKEEPER_NAME_KEY = "gozag_shopkeeper_%d";
+const char * const GOZAG_SHOP_TYPE_KEY       = "gozag_shop_type_%d";
+const char * const GOZAG_SHOP_SUFFIX_KEY     = "gozag_shop_suffix_%d";
+const char * const GOZAG_SHOP_COST_KEY       = "gozag_shop_cost_%d";
+
+#define GOZAG_POTION_BASE_MULTIPLIER 25
+#define GOZAG_SHOP_BASE_MULTIPLIER 100
+#define GOZAG_SHOP_MOD_MULTIPLIER 25
+#define GOZAG_BRIBE_AMOUNT 3000
+#define GOZAG_MAX_BRIBABILITY 8
+#define GOZAG_MAX_POTIONS 3
+
+#define RU_SAC_XP_LEVELS 2
+
 struct bolt;
 class stack_iterator;
 
@@ -65,6 +82,17 @@ bool fedhas_passthrough_class(const monster_type mc);
 bool fedhas_passthrough(const monster* target);
 bool fedhas_passthrough(const monster_info* target);
 bool fedhas_shoot_through(const bolt& beam, const monster* victim);
+struct mgen_data;
+int place_ring(vector<coord_def>& ring_points,
+               const coord_def& origin,
+               mgen_data prototype,
+               int n_arcs,
+               int arc_occupancy,
+               int& seen_count);
+// Collect lists of points that are within LOS, unoccupied, and not solid
+// (walls/statues).
+void collect_radius_points(vector<vector<coord_def> > &radius_points,
+                           const coord_def &origin, los_type los);
 int fedhas_fungal_bloom();
 spret_type fedhas_sunlight(bool fail = false);
 void process_sunlights(bool future = false);
@@ -118,8 +146,9 @@ bool qazlal_disaster_area();
 
 void init_sac_index();
 void ru_offer_new_sacrifices();
+string ru_sac_text(ability_type sac);
 bool ru_do_sacrifice(ability_type sac);
-bool ru_reject_sacrifices();
+bool ru_reject_sacrifices(bool skip_prompt = false);
 void ru_reset_sacrifice_timer(bool clear_timer = false);
 bool will_ru_retaliate();
 void ru_do_retribution(monster* mons, int damage);

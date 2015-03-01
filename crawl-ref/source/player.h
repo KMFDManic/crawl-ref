@@ -28,10 +28,13 @@
 #define BARBS_MOVE_KEY "moved_with_barbs_status"
 #define HORROR_PENALTY_KEY "horror_penalty"
 
+
 // display/messaging breakpoints for penalties from Ru's MUT_HORROR
 #define HORROR_LVL_EXTREME  3
 #define HORROR_LVL_OVERWHELMING  5
 
+/// The standard unit of regen; one level in artifact inscriptions
+static const int REGEN_PIP = 40;
 /// The standard unit of MR; one level in %/@ screens
 static const int MR_PIP = 40;
 /// The standard unit of stealth; one level in %/@ screens
@@ -179,7 +182,8 @@ public:
   int  exp_available;
   int  zot_points; // ZotDef currency
 
-  int exp_docked, exp_docked_total; // Ashenzari's wrath
+  FixedVector<int, NUM_GODS> exp_docked;
+  FixedVector<int, NUM_GODS> exp_docked_total; // XP-based wrath
 
   FixedArray<uint32_t, 6, MAX_SUBTYPES> item_description;
   FixedVector<unique_item_status_type, MAX_UNRANDARTS> unique_items;
@@ -511,12 +515,14 @@ public:
 
     item_def *slot_item(equipment_type eq, bool include_melded=false) const;
 
+    int base_ac_from(const item_def &armour, int scale = 1) const;
     void maybe_degrade_bone_armour(int mult);
 
     // actor
     int mindex() const;
     int get_hit_dice() const;
     int get_experience_level() const;
+    int get_max_xl() const;
     bool is_player() const
     {
 #ifndef DEBUG_GLOBALS
@@ -595,7 +601,7 @@ public:
     string conj_verb(const string &verb) const;
     string hand_name(bool plural, bool *can_plural = nullptr) const;
     string hands_verb(const string &plural_verb) const;
-    string hands_act(const string &plural_verb, const string &subject) const;
+    string hands_act(const string &plural_verb, const string &object) const;
     string foot_name(bool plural, bool *can_plural = nullptr) const;
     string arm_name(bool plural, bool *can_plural = nullptr) const;
     string unarmed_attack_name() const;
@@ -645,6 +651,7 @@ public:
     void splash_with_acid(const actor* evildoer, int acid_strength,
                           bool allow_corrosion = true,
                           const char* hurt_msg = nullptr);
+    void corrode_equipment(const char* corrosion_source = "the acid");
     void sentinel_mark(bool trap = false);
     int hurt(const actor *attacker, int amount,
              beam_type flavour = BEAM_MISSILE,
@@ -756,6 +763,7 @@ public:
     int unadjusted_body_armour_penalty() const;
     int adjusted_body_armour_penalty(int scale = 1) const;
     int adjusted_shield_penalty(int scale = 1) const;
+    float get_shield_skill_to_offset_penalty(const item_def &item);
     int armour_tohit_penalty(bool random_factor, int scale = 1) const;
     int shield_tohit_penalty(bool random_factor, int scale = 1) const;
 
@@ -868,6 +876,7 @@ void move_player_to_grid(const coord_def& p, bool stepped);
 bool is_map_persistent();
 bool player_in_connected_branch();
 bool player_in_hell();
+bool player_in_starting_abyss();
 
 static inline bool player_in_branch(int branch)
 {
@@ -1029,8 +1038,6 @@ void contaminate_player(int change, bool controlled = false, bool msg = true);
 
 bool confuse_player(int amount, bool quiet = false);
 
-bool curare_hits_player(int death_source, int levels, string name,
-                        string source_name);
 bool poison_player(int amount, string source, string source_aux = "",
                    bool force = false);
 void paralyse_player(string source, int amount = 0);

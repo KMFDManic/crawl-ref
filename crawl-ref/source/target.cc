@@ -69,7 +69,7 @@ targetter_beam::targetter_beam(const actor *act, int range, zap_type zap,
     ASSERT(max_ex_rad >= 0);
     ASSERT(max_ex_rad >= min_ex_rad);
     agent = act;
-    beam.set_agent(const_cast<actor *>(act));
+    beam.set_agent(act);
     origin = aim = act->pos();
     beam.attitude = ATT_FRIENDLY;
     zappy(zap, pow, beam);
@@ -483,7 +483,7 @@ targetter_cleave::targetter_cleave(const actor* act, coord_def target)
     origin = act->pos();
     aim = target;
     list<actor*> act_targets;
-    get_cleave_targets(act, target, act_targets);
+    get_cleave_targets(*act, target, act_targets);
     while (!act_targets.empty())
     {
         targets.insert(act_targets.front()->pos());
@@ -503,7 +503,8 @@ targetter_cloud::targetter_cloud(const actor* act, int range,
     ASSERT(cnt_min > 0);
     ASSERT(cnt_max > 0);
     ASSERT(cnt_min <= cnt_max);
-    if (agent = act)
+    agent = act;
+    if (agent)
         origin = aim = act->pos();
     range2 = dist_range(range);
 }

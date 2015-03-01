@@ -1041,13 +1041,13 @@ void wizard_make_monster_summoned(monster* mon)
     }
 
     mprf(MSGCH_PROMPT, "[a] clone [b] animated [c] chaos [d] miscast [e] zot");
-    mprf(MSGCH_PROMPT, "[f] wrath [g] aid                [m] misc    [s] spell");
+    mprf(MSGCH_PROMPT, "[f] wrath [g] lantern  [h] aid   [m] misc    [s] spell");
 
     mprf(MSGCH_PROMPT, "Which summon type? ");
 
     char choice = toalower(getchm());
 
-    if (!(choice >= 'a' && choice <= 'g') && choice != 'm' && choice != 's')
+    if (!(choice >= 'a' && choice <= 'h') && choice != 'm' && choice != 's')
     {
         canned_msg(MSG_OK);
         return;
@@ -1063,7 +1063,8 @@ void wizard_make_monster_summoned(monster* mon)
         case 'd': type = MON_SUMM_MISCAST; break;
         case 'e': type = MON_SUMM_ZOT; break;
         case 'f': type = MON_SUMM_WRATH; break;
-        case 'g': type = MON_SUMM_AID; break;
+        case 'g': type = MON_SUMM_LANTERN; break;
+        case 'h': type = MON_SUMM_AID; break;
         case 'm': type = 0; break;
 
         case 's':
@@ -1192,10 +1193,7 @@ void debug_pathfind(int idx)
         string path_str;
         mpr("Here's the shortest path: ");
         for (coord_def pos : path)
-        {
-            snprintf(info, INFO_SIZE, "(%d, %d)  ", pos.x, pos.y);
-            path_str += info;
-        }
+            path_str += make_stringf("(%d, %d)  ", pos.x, pos.y);
         mpr(path_str);
         mprf("-> path length: %u", (unsigned int)path.size());
 
@@ -1205,10 +1203,7 @@ void debug_pathfind(int idx)
         mpr("");
         mpr("And here are the needed waypoints: ");
         for (coord_def pos : path)
-        {
-            snprintf(info, INFO_SIZE, "(%d, %d)  ", pos.x, pos.y);
-            path_str += info;
-        }
+            path_str += make_stringf("(%d, %d)  ", pos.x, pos.y);
         mpr(path_str);
         mprf("-> #waypoints: %u", (unsigned int)path.size());
     }
@@ -1275,12 +1270,12 @@ void debug_miscast(int target_index)
         return;
     }
 
-    int disciplines = 0;
+    spschools_type disciplines = SPTYP_NONE;
     if (spell != SPELL_NO_SPELL)
     {
         disciplines = get_spell_disciplines(spell);
 
-        if (disciplines == 0)
+        if (!disciplines)
         {
             mprf("Spell '%s' has no disciplines.", spell_title(spell));
             return;
@@ -1293,9 +1288,9 @@ void debug_miscast(int target_index)
         mprf("Miscasting school %s.", spelltype_long_name(school));
 
     if (spell != SPELL_NO_SPELL)
-        mprf(MSGCH_PROMPT, "Enter spell_power,spell_failure: ");
+        mprf(MSGCH_PROMPT, "Enter spell_power,raw_spell_failure: ");
     else
-        mprf(MSGCH_PROMPT, "Enter miscast_level or spell_power,spell_failure: ");
+        mprf(MSGCH_PROMPT, "Enter miscast_level or spell_power,raw_spell_failure: ");
 
     if (cancellable_get_line_autohist(specs, sizeof specs) || !*specs)
     {

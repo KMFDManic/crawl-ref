@@ -212,12 +212,6 @@ static void _decide_monster_firing_position(monster* mon, actor* owner)
 //
 // 1. Evaluates current AI state
 // 2. Sets monster target x,y based on current foe
-//
-// XXX: Monsters of I_NORMAL or above should select a new target
-// if their current target is another monster which is sitting in
-// a wall and is immune to most attacks while in a wall, unless
-// the monster has a spell or special/nearby ability which isn't
-// affected by the wall.
 //---------------------------------------------------------------
 void handle_behaviour(monster* mon)
 {
@@ -1119,7 +1113,7 @@ void behaviour_event(monster* mon, mon_event_type event, const actor *src,
     bool isSmart          = (mons_intel(mon) > I_ANIMAL);
     bool setTarget        = false;
     bool breakCharm       = false;
-    bool was_sleeping     = mon->asleep();
+    bool was_unaware      = mon->asleep() || mon->foe == MHITNOT;
     string msg;
     int src_idx           = src ? src->mindex() : MHITNOT; // AXE ME
 
@@ -1428,8 +1422,8 @@ void behaviour_event(monster* mon, mon_event_type event, const actor *src,
 
     ASSERT_IN_BOUNDS_OR_ORIGIN(mon->target);
 
-    // If it woke up and you're its new foe, it might shout.
-    if (was_sleeping && !mon->asleep() && allow_shout
+    // If it was unaware of you and you're its new foe, it might shout.
+    if (was_unaware && !mon->asleep() && allow_shout
         && mon->foe == MHITYOU && !mon->wont_attack())
     {
         handle_monster_shouts(mon);

@@ -102,19 +102,18 @@ species_type find_species_from_string(const string &species)
 
 void wizard_change_species_to(species_type sp)
 {
-    // Can't use magic cookies or placeholder species.
-    if (!is_valid_species(sp))
+    // Means find_species_from_string couldn't interpret right.
+    if (sp == SP_UNKNOWN)
     {
         mpr("That species isn't available.");
         return;
     }
 
     // Re-scale skill-points.
-    for (int i = SK_FIRST_SKILL; i < NUM_SKILLS; ++i)
+    for (skill_type sk = SK_FIRST_SKILL; sk < NUM_SKILLS; ++sk)
     {
-        skill_type sk = static_cast<skill_type>(i);
-        you.skill_points[i] *= species_apt_factor(sk, sp)
-                               / species_apt_factor(sk);
+        you.skill_points[sk] *= species_apt_factor(sk, sp)
+                                / species_apt_factor(sk);
     }
 
     species_type old_sp = you.species;
@@ -365,6 +364,9 @@ void wizard_heal(bool super_heal)
     you.redraw_hit_points = true;
     you.redraw_armour_class = true;
     you.redraw_evasion = true;
+
+    for (int stat = 0; stat < NUM_STATS; stat++)
+        you.stat_zero[stat] = false;
 }
 
 void wizard_set_hunger_state()
@@ -478,6 +480,13 @@ void wizard_set_piety()
         return;
     }
 
+    if (you_worship(GOD_RU))
+    {
+        mprf("Current progress to next sacrifice: %d  Progress needed: %d",
+            you.props["ru_progress_to_next_sacrifice"].get_int(),
+            you.props["ru_sacrifice_delay"].get_int());
+    }
+
     mprf(MSGCH_PROMPT, "Enter new piety value (current = %d, Enter for 0): ",
          you.piety);
     char buf[30];
@@ -564,9 +573,8 @@ void wizard_set_all_skills()
         if (amount > 27)
             amount = 27;
 
-        for (int i = SK_FIRST_SKILL; i < NUM_SKILLS; ++i)
+        for (skill_type sk = SK_FIRST_SKILL; sk < NUM_SKILLS; ++sk)
         {
-            skill_type sk = static_cast<skill_type>(i);
             if (is_invalid_skill(sk) || is_useless_skill(sk))
                 continue;
 
@@ -961,7 +969,7 @@ void wizard_set_xl()
     }
 
     const int newxl = atoi(buf);
-    if (newxl < 1 || newxl > 27 || newxl == you.experience_level)
+    if (newxl < 1 || newxl > you.get_max_xl() || newxl == you.experience_level)
     {
         canned_msg(MSG_OK);
         return;

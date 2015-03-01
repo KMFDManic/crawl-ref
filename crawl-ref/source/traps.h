@@ -41,9 +41,11 @@ void     handle_items_on_shaft(const coord_def& where, bool open_shaft);
 
 int       num_traps_for_place();
 trap_type random_trap_for_place();
+trap_type random_vault_trap();
 
 int count_traps(trap_type ttyp);
 void place_webs(int num);
 bool maybe_destroy_web(actor *oaf);
 bool ensnare(actor *fly);
+bool can_trigger_shadow_trap(const monster &mons);
 #endif

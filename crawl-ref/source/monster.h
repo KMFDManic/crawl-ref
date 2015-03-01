@@ -3,6 +3,7 @@
 
 #include "actor.h"
 #include "mon-ench.h"
+#include "spl-util.h"
 
 const int KRAKEN_TENTACLE_RANGE = 3;
 #define TIDE_CALL_TURN "tide-call-turn"
@@ -10,6 +11,8 @@ const int KRAKEN_TENTACLE_RANGE = 3;
 #define MAX_DAMAGE_COUNTER 10000
 #define ZOMBIE_BASE_AC_KEY "zombie_base_ac"
 #define ZOMBIE_BASE_EV_KEY "zombie_base_ev"
+
+#define FAKE_BLINK_KEY "fake_blink"
 
 typedef map<enchant_type, mon_enchant> mon_enchant_list;
 
@@ -262,9 +265,9 @@ public:
     item_def *slot_item(equipment_type eq, bool include_melded=false) const;
     item_def *mslot_item(mon_inv_type sl) const;
     item_def *weapon(int which_attack = -1) const;
-    item_def *launcher();
+    item_def *launcher() const;
     item_def *melee_weapon() const;
-    item_def *missiles();
+    item_def *missiles() const;
     item_def *shield() const;
 
     hands_reqd_type hands_reqd(const item_def &item) const;
@@ -472,6 +475,7 @@ public:
     void splash_with_acid(const actor* evildoer, int /*acid_strength*/ = -1,
                           bool /*allow_corrosion*/ = true,
                           const char* /*hurt_msg*/ = nullptr);
+    void corrode_equipment(const char* corrosion_source = "the acid");
     int hurt(const actor *attacker, int amount,
              beam_type flavour = BEAM_MISSILE,
              kill_method_type kill_type = KILLED_BY_MONSTER,
@@ -526,7 +530,7 @@ public:
     int action_energy(energy_use_type et) const;
 
     bool do_shaft();
-    bool has_spell_of_type(unsigned) const;
+    bool has_spell_of_type(spschool_flag_type discipline) const;
 
     void bind_melee_flags();
     void bind_spell_flags();

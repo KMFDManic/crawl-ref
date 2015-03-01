@@ -19,7 +19,6 @@
 #include "dbg-scan.h"
 #include "delay.h"
 #include "dungeon.h"
-#include "effects.h"
 #include "evoke.h"
 #include "fight.h"
 #include "fineff.h"
@@ -61,6 +60,7 @@
 #include "teleport.h"
 #include "terrain.h"
 #include "throw.h"
+#include "timed_effects.h"
 #include "traps.h"
 #include "viewchar.h"
 #include "view.h"
@@ -111,8 +111,8 @@ int monster::get_experience_level() const
 
 static const coord_def mon_compass[8] =
 {
-    coord_def(-1,-1), coord_def(0,-1), coord_def(1,-1), coord_def(1,0),
-    coord_def(1, 1), coord_def(0, 1), coord_def(-1,1), coord_def(-1,0)
+    { -1,-1 }, { 0,-1 }, {  1,-1 }, {  1,0 }, // bjnl
+    {  1, 1 }, { 0, 1 }, { -1, 1 }, { -1,0 }  // ukyh
 };
 
 static int _compass_idx(const coord_def& mov)
@@ -3867,7 +3867,8 @@ static void _ballisto_on_move(monster* mons, const coord_def& position)
     mons->spore_cooldown = 40;
 }
 
-bool monster_swaps_places(monster* mon, const coord_def& delta, bool takes_time)
+bool monster_swaps_places(monster* mon, const coord_def& delta,
+                          bool takes_time, bool apply_effects)
 {
     if (delta.origin())
         return false;
@@ -3907,14 +3908,14 @@ bool monster_swaps_places(monster* mon, const coord_def& delta, bool takes_time)
 
     mon->check_redraw(m2->pos(), false);
     if (mon->is_wall_clinging())
-        mon->check_clinging(true);
-    else
+        mon->check_clinging(true); // XXX: avoids location effects!
+    else if (apply_effects)
         mon->apply_location_effects(m2->pos());
 
     m2->check_redraw(mon->pos(), false);
     if (m2->is_wall_clinging())
-        m2->check_clinging(true);
-    else
+        m2->check_clinging(true); // XXX: avoids location effects!
+    else if (apply_effects)
         m2->apply_location_effects(mon->pos());
 
     // The seen context no longer applies if the monster is moving normally.
@@ -4164,9 +4165,9 @@ static bool _monster_move(monster* mons)
         return false;
     }
 
-    // If a water monster is currently flopping around on land, it cannot
-    // really control where it wants to move, though there's a 50% chance
-    // of flopping into an adjacent water grid.
+    // If a water (or lava) monster is currently flopping around on land, it
+    // cannot really control where it wants to move, though there's a 50%
+    // chance of flopping into an adjacent water (or lava) grid.
     if (mons->has_ench(ENCH_AQUATIC_LAND))
     {
         vector<coord_def> adj_water;
@@ -4176,8 +4177,11 @@ static bool _monster_move(monster* mons)
             if (!cell_is_solid(*ai))
             {
                 adj_move.push_back(*ai);
-                if (feat_is_watery(grd(*ai)))
+                if (habitat == HT_WATER && feat_is_watery(grd(*ai))
+                    || habitat == HT_LAVA && feat_is_lava(grd(*ai)))
+                {
                     adj_water.push_back(*ai);
+                }
             }
         }
         if (adj_move.empty())

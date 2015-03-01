@@ -34,8 +34,7 @@ skill_type abil_skill(ability_type abil)
 
     case ABIL_YRED_RECALL_UNDEAD_SLAVES:
     case ABIL_MAKHLEB_MINOR_DESTRUCTION:
-    case ABIL_ELYVILON_LESSER_HEALING_SELF:
-    case ABIL_ELYVILON_LESSER_HEALING_OTHERS:
+    case ABIL_ELYVILON_LESSER_HEALING:
     case ABIL_BEOGH_RECALL_ORCISH_FOLLOWERS:
     case ABIL_ZIN_RECITE:
     case ABIL_SIF_MUNA_CHANNEL_ENERGY:
@@ -58,8 +57,8 @@ skill_type abil_skill(ability_type abil)
     case ABIL_YRED_DRAIN_LIFE:
     case ABIL_ZIN_IMPRISON:
     case ABIL_MAKHLEB_MAJOR_DESTRUCTION:
-    case ABIL_ELYVILON_GREATER_HEALING_SELF:
-    case ABIL_ELYVILON_GREATER_HEALING_OTHERS:
+    case ABIL_ELYVILON_GREATER_HEALING:
+    case ABIL_ELYVILON_HEAL_OTHER:
     case ABIL_LUGONU_BANISH:
     case ABIL_TSO_CLEANSING_FLAME:
     case ABIL_OKAWARU_FINESSE:
@@ -111,8 +110,7 @@ static int _abil_degree(ability_type abil)
 
     case ABIL_YRED_RECALL_UNDEAD_SLAVES:
     case ABIL_MAKHLEB_MINOR_DESTRUCTION:
-    case ABIL_ELYVILON_LESSER_HEALING_SELF:
-    case ABIL_ELYVILON_LESSER_HEALING_OTHERS:
+    case ABIL_ELYVILON_LESSER_HEALING:
     case ABIL_BEOGH_RECALL_ORCISH_FOLLOWERS:
         return 1;
     case ABIL_SIF_MUNA_CHANNEL_ENERGY:
@@ -144,8 +142,8 @@ static int _abil_degree(ability_type abil)
 
     case ABIL_ZIN_IMPRISON:
     case ABIL_MAKHLEB_MAJOR_DESTRUCTION:
-    case ABIL_ELYVILON_GREATER_HEALING_SELF:
-    case ABIL_ELYVILON_GREATER_HEALING_OTHERS:
+    case ABIL_ELYVILON_GREATER_HEALING:
+    case ABIL_ELYVILON_HEAL_OTHER:
     case ABIL_LUGONU_BANISH:
     case ABIL_CHEIBRIADOS_DISTORTION:
     case ABIL_QAZLAL_ELEMENTAL_FORCE:
@@ -189,7 +187,7 @@ static void _exercise_spell(spell_type spell, bool success)
     // (!success) reduces skill increase for miscast spells
     int workout = 0;
 
-    unsigned int disciplines = get_spell_disciplines(spell);
+    spschools_type disciplines = get_spell_disciplines(spell);
 
     int skillcount = count_bits(disciplines);
 
@@ -205,10 +203,11 @@ static void _exercise_spell(spell_type spell, bool success)
     vector<skill_type> disc;
     for (int ndx = 0; ndx <= SPTYP_LAST_EXPONENT; ndx++)
     {
-        if (!spell_typematch(spell, 1 << ndx))
+        const auto bit = spschools_type::exponent(ndx);
+        if (!spell_typematch(spell, bit))
             continue;
 
-        skill_type skill = spell_type2skill(1 << ndx);
+        skill_type skill = spell_type2skill(bit);
         if (skill == SK_CONJURATIONS)
             conj = true;
 

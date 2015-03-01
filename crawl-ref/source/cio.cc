@@ -151,13 +151,21 @@ static void wrapcprintf(int wrapcol, const char *s, ...)
 
     const GotoRegion region = get_cursor_region();
     const int max_y = cgetsize(region).y;
-    while (!buf.empty())
+
+    size_t linestart = 0;
+    size_t len = buf.length();
+
+    while (linestart < len)
     {
         const coord_def pos = cgetpos(region);
 
         const int avail = wrapcol - pos.x + 1;
         if (avail > 0)
-            cprintf("%s", wordwrap_line(buf, avail).c_str());
+        {
+            const string line = chop_string(buf.c_str() + linestart, avail, false);
+            cprintf("%s", line.c_str());
+            linestart += line.length();
+        }
 
         // No room for more lines, quit now.
         if (pos.y >= max_y)
@@ -575,15 +583,15 @@ int line_reader::process_key(int ch)
     case CK_DELETE:
         if (*cur)
         {
-            char *np = next_glyph(cur);
+            const char *np = next_glyph(cur);
             ASSERT(np);
-            char *c = cur;
-            while (*np)
-                *c++ = *np++;
-            length = np - buffer;
+            const size_t del_bytes = np - cur;
+            const size_t follow_bytes = (buffer + length) - np;
+            // Copy the NUL too.
+            memmove(cur, np, follow_bytes + 1);
+            length -= del_bytes;
 
             cursorto(pos);
-            buffer[length-1] = 0;
             wrapcprintf(wrapcol, "%s ", cur);
             cursorto(pos);
         }

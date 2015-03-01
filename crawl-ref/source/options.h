@@ -1,6 +1,8 @@
 #ifndef OPTIONS_H
 #define OPTIONS_H
 
+#include <algorithm>
+
 #include "feature.h"
 #include "newgame_def.h"
 #include "pattern.h"
@@ -69,6 +71,12 @@ struct message_colour_mapping
     {
         return message == o.message && colour == o.colour;
     }
+};
+
+struct flang_entry
+{
+    flang_t lang_id;
+    int value;
 };
 
 class LineInput;
@@ -157,6 +165,9 @@ public:
     int         scroll_margin_x;
     int         scroll_margin_y;
 
+    // Whether exclusions and exclusion radius are visible in the viewport.
+    bool        always_show_exclusions;
+
     int         autopickup_on;
     bool        autopickup_starting_ammo;
     bool        default_manual_training;
@@ -171,6 +182,7 @@ public:
     bool        easy_unequip;    // allow auto-removing of armour / jewellery
     bool        equip_unequip;   // Make 'W' = 'T', and 'P' = 'R'.
     bool        jewellery_prompt; // Always prompt for slot when changing jewellery.
+    bool        easy_door;       // 'O', 'C' don't prompt with just one door.
     int         confirm_butcher; // When to prompt for butchery
     bool        easy_eat_chunks; // make 'e' auto-eat the oldest safe chunk
     bool        auto_eat_chunks; // allow eating chunks while resting or travelling
@@ -213,6 +225,8 @@ public:
     FixedVector<ucs_t, NUM_DCHAR_TYPES> char_table;
 
     int         num_colours;     // used for setting up curses colour table (8 or 16)
+
+    vector<string> pizzas;
 
 #ifdef WIZARD
     int            wiz_mode;      // no, never, start in wiz mode
@@ -360,15 +374,21 @@ public:
     // If the player prefers to merge kill records, this option can do that.
     int         kill_map[KC_NCATEGORIES];
 
-    bool        trapwalk_safe_hp; // Whether to prompt when walking onto mechanical
-                                  // traps at low hp.
-
     bool        rest_wait_both; // Stop resting only when both HP and MP are
                                 // fully restored.
 
-    lang_t      lang;                // Translation to use.
-    const char* lang_name;           // Database name of the language.
+    lang_t              language;         // Translation to use.
+    const char*         lang_name;        // Database name of the language.
+    vector<flang_entry> fake_langs;       // The fake language(s) in use.
+    bool has_fake_lang(flang_t flang)
+    {
+        return any_of(begin(fake_langs), end(fake_langs),
+                      [flang] (const flang_entry &f)
+                      { return f.lang_id == flang; });
+    }
 
+    // -1 and 0 mean no confirmation, other possible values are 1,2,3 (see fail_severity())
+    int         fail_severity_to_confirm;
 #ifdef WIZARD
     // Parameters for fight simulations.
     string      fsim_mode;
@@ -531,6 +551,7 @@ private:
     void remove_item_glyph_override(const string &, bool prepend);
     void set_option_fragment(const string &s, bool prepend);
     bool set_lang(const char *s);
+    void set_fake_langs(const string &input);
     void set_player_tile(const string &s);
     void set_tile_offsets(const string &s, bool set_shield);
 

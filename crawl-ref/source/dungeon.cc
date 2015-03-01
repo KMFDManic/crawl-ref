@@ -68,6 +68,7 @@
 #include "tiledef-dngn.h"
 #include "tilepick.h"
 #include "tileview.h"
+#include "timed_effects.h"
 #include "traps.h"
 
 #ifdef DEBUG_DIAGNOSTICS
@@ -248,20 +249,7 @@ static void _count_gold()
 
     you.attribute[ATTR_GOLD_GENERATED] += gold;
 
-    if (player_under_penance(GOD_GOZAG) && x_chance_in_y(gold - 500, 500))
-    {
-        for (item_def *pile : gold_piles)
-        {
-            pile->clear();
-            pile->base_type = OBJ_MISSILES;
-            pile->sub_type  = MI_STONE;
-            pile->quantity  = 1;
-            item_colour(*pile);
-        }
-        mprf(MSGCH_GOD, GOD_GOZAG, "You feel a great sense of loss.");
-        dec_penance(GOD_GOZAG, gold / 200);
-    }
-    else if (you_worship(GOD_GOZAG))
+    if (you_worship(GOD_GOZAG))
     {
         for (unsigned int i = 0; i < gold_places.size(); i++)
         {
@@ -717,7 +705,7 @@ bool dgn_square_travel_ok(const coord_def &c)
     if (feat_is_trap(feat))
     {
         const trap_def * const trap = find_trap(c);
-        return !(trap && trap->type == TRAP_TELEPORT);
+        return !(trap && trap->type == TRAP_TELEPORT_PERMANENT);
     }
     else
         return feat_is_traversable(feat);
@@ -1394,11 +1382,8 @@ void fixup_misplaced_items()
     for (int i = 0; i < MAX_ITEMS; i++)
     {
         item_def& item(mitm[i]);
-        if (!item.defined() || item.pos.x == 0
-            || item.held_by_monster())
-        {
+        if (!item.defined() || item.held_by_monster())
             continue;
-        }
 
         if (in_bounds(item.pos))
         {
@@ -3204,20 +3189,6 @@ static bool _builder_normal()
     return true;
 }
 
-// Used to nuke shafts placed in corridors on low levels - it's just
-// too nasty otherwise.
-// Well, actually this just checks if it's next to a non-passable
-// square. (jpeg)
-static bool _shaft_is_in_corridor(const coord_def& c)
-{
-    for (orth_adjacent_iterator ai(c); ai; ++ai)
-    {
-        if (!(in_bounds(*ai) && feat_has_solid_floor(grd(*ai))))
-            return true;
-    }
-    return false;
-}
-
 static void _place_gozag_shop(dungeon_feature_type stair)
 {
     string key = make_stringf(GOZAG_SHOP_KEY,
@@ -3313,12 +3284,16 @@ static void _place_traps()
     int level_number = env.absdepth0;
 
     ASSERT_RANGE(num_traps, 0, MAX_TRAPS + 1);
+    dprf("attempting to place %d traps", num_traps);
 
     for (int i = 0; i < num_traps; i++)
     {
         trap_def& ts(env.trap[i]);
         if (ts.type != TRAP_UNASSIGNED)
+        {
+            dprf("trap %d already placed (by a vault?)", i);
             continue;
+        }
 
         int tries;
         for (tries = 0; tries < 200; ++tries)
@@ -3334,36 +3309,25 @@ static void _place_traps()
         }
 
         if (tries == 200)
-            break;
-
-        while (ts.type >= NUM_TRAPS)
-            ts.type = random_trap_for_place();
-
-        if (ts.type == TRAP_SHAFT && level_number <= 7)
         {
-            // Disallow shaft construction in corridors!
-            if (_shaft_is_in_corridor(ts.pos))
-            {
-                // Reroll until we get a different type of trap
-                while (ts.type == TRAP_SHAFT || ts.type >= NUM_TRAPS)
-                    ts.type = random_trap_for_place();
-            }
+            dprf("tried %d times to place a trap & gave up", tries);
+            break;
         }
 
-        // Only teleport, shaft, alarm and Zot traps are interesting enough to
-        // be placed randomly.  Until the formula is overhauled, let's just
-        // skip creation if the old code would pick a boring one.
-        if (trap_category(ts.type) == DNGN_TRAP_MECHANICAL)
+        const trap_type type = random_trap_for_place();
+        if (ts.type == NUM_TRAPS)
         {
-            ts.type = TRAP_UNASSIGNED;
+            dprf("failed to find a trap type to place");
             continue;
         }
 
+        ts.type = type;
         grd(ts.pos) = DNGN_UNDISCOVERED_TRAP;
         env.tgrid(ts.pos) = i;
         if (ts.type == TRAP_SHAFT && _shaft_known(level_number))
             ts.reveal();
         ts.prepare_ammo();
+        dprf("placed a trap");
     }
 
     if (player_in_branch(BRANCH_SPIDER))
@@ -4334,12 +4298,8 @@ static const vault_placement *_build_vault_impl(const map_def *vault,
 
     if (!make_no_exits)
     {
-        const bool spotty = player_in_branch(BRANCH_ORC)
-#if TAG_MAJOR_VERSION == 34
-                            || player_in_branch(BRANCH_FOREST)
-#endif
-                            || player_in_branch(BRANCH_SWAMP)
-                            || player_in_branch(BRANCH_SLIME);
+        const bool spotty =
+            branches[you.where_are_you].branch_flags & BFLAG_SPOTTY;
         if (place.connect(spotty) == 0 && place.exits.size() > 0
             && !player_in_branch(BRANCH_ABYSS))
         {
@@ -4590,12 +4550,12 @@ int dgn_place_item(const item_spec &spec,
         case ISPEC_RANDART:
             level = spec.level;
             break;
-        case ISPEC_GOOD:
+        case ISPEC_STAR:
             level = 5 + level * 2;
             break;
         case ISPEC_SUPERB:
             adjust_type = true;
-            level = MAKE_GOOD_ITEM;
+            level = ISPEC_GOOD_ITEM;
             break;
         case ISPEC_ACQUIREMENT:
             adjust_type = true;
@@ -4736,11 +4696,11 @@ static void _dgn_give_mon_spec_items(mons_spec &mspec,
             // and maybe even handle ISPEC_ACQUIREMENT.
             switch (spec.level)
             {
-            case ISPEC_GOOD:
+            case ISPEC_STAR:
                 item_level = 5 + item_level * 2;
                 break;
             case ISPEC_SUPERB:
-                item_level = MAKE_GOOD_ITEM;
+                item_level = ISPEC_GOOD_ITEM;
                 break;
             case ISPEC_DAMAGED:
             case ISPEC_BAD:
@@ -5159,7 +5119,7 @@ static void _vault_grid_glyph(vault_placement &place, const coord_def& where,
         place_specific_trap(where, TRAP_RANDOM);
         break;
     case '~':
-        place_specific_trap(where, random_trap_for_place());
+        place_specific_trap(where, random_vault_trap());
         break;
     case 'B':
         grd(where) = _pick_temple_altar(place);
@@ -5179,7 +5139,7 @@ static void _vault_grid_glyph(vault_placement &place, const coord_def& where,
         else if (vgrid == '|')
         {
             which_class = _superb_object_class();
-            which_depth = MAKE_GOOD_ITEM;
+            which_depth = ISPEC_GOOD_ITEM;
         }
         else if (vgrid == '*')
             which_depth = 5 + which_depth * 2;
@@ -5800,7 +5760,7 @@ static void _stock_shop_item(int j, shop_type shop_type_,
             // make an item randomly
             // gozag shop items are better
             const bool good_item = spec.gozag || one_chance_in(4);
-            const int level = good_item ? MAKE_GOOD_ITEM : item_level;
+            const int level = good_item ? ISPEC_GOOD_ITEM : item_level;
             item_index = items(true, basetype, subtype, level);
         }
 
@@ -6062,6 +6022,7 @@ static bool _place_specific_trap(const coord_def& where, trap_spec* spec,
 #if TAG_MAJOR_VERSION == 34
            || spec_type == TRAP_DART || spec_type == TRAP_GAS
 #endif
+           || spec_type == TRAP_SHADOW_DORMANT
            || !is_valid_shaft_level(known) && spec_type == TRAP_SHAFT)
     {
         spec_type = static_cast<trap_type>(random2(TRAP_MAX_REGULAR + 1));

@@ -499,10 +499,10 @@ public:
 
     bool effect(bool=true, int pow = 40) const
     {
-        if (you.backlit() || you.haloed())
+        if (you.backlit())
         {
             vector<const char *> afflictions;
-            if (you.haloed())
+            if (you.haloed() && !you.umbraed())
                 afflictions.push_back("halo");
             if (get_contamination_level() > 1)
                 afflictions.push_back("magical contamination");
@@ -538,7 +538,7 @@ public:
 
     bool can_quaff() const
     {
-        // TODO: merge with item_use.cc:_dont_use_invis()
+        // TODO: merge with item_use.cc:dont_use_invis()
         return get_contamination_level() <= 1;
     }
 
@@ -569,7 +569,7 @@ public:
 
     bool effect(bool=true, int=40) const
     {
-        if (you.experience_level < 27)
+        if (you.experience_level < you.get_max_xl())
         {
             mpr("You feel more experienced!");
             adjust_level(1, true);

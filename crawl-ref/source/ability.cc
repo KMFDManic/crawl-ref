@@ -27,7 +27,6 @@
 #include "describe.h"
 #include "directn.h"
 #include "dungeon.h"
-#include "effects.h"
 #include "evoke.h"
 #include "exercise.h"
 #include "food.h"
@@ -97,6 +96,7 @@ enum ability_flag_type
     ABFLAG_ZOTDEF         = 0x00040000, // ZotDef ability, w/ appropriate hotkey
     ABFLAG_SKILL_DRAIN    = 0x00080000, // drains skill levels
     ABFLAG_GOLD           = 0x00100000, // costs gold
+    ABFLAG_SACRIFICE      = 0x00200000, // sacrifice (Ru)
 };
 
 static int  _find_ability_slot(const ability_def& abil);
@@ -161,8 +161,8 @@ ability_type god_abilities[NUM_GODS][MAX_GOD_ABILITIES] =
     { ABIL_NON_ABILITY, ABIL_NON_ABILITY, ABIL_NEMELEX_TRIPLE_DRAW,
       ABIL_NEMELEX_DEAL_FOUR, ABIL_NEMELEX_STACK_FIVE },
     // Elyvilon
-    { ABIL_ELYVILON_LESSER_HEALING_SELF, ABIL_ELYVILON_PURIFICATION,
-      ABIL_ELYVILON_GREATER_HEALING_OTHERS, ABIL_NON_ABILITY,
+    { ABIL_ELYVILON_LESSER_HEALING, ABIL_ELYVILON_HEAL_OTHER,
+      ABIL_ELYVILON_PURIFICATION, ABIL_ELYVILON_GREATER_HEALING,
       ABIL_ELYVILON_DIVINE_VIGOUR },
     // Lugonu
     { ABIL_LUGONU_ABYSS_EXIT, ABIL_LUGONU_BEND_SPACE, ABIL_LUGONU_BANISH,
@@ -262,6 +262,7 @@ static const ability_def Ability_List[] =
     { ABIL_EVOKE_FLIGHT, "Evoke Flight", 1, 0, 100, 0, 0, ABFLAG_NONE},
     { ABIL_EVOKE_FOG, "Evoke Fog", 2, 0, 250, 0, 0, ABFLAG_NONE},
     { ABIL_EVOKE_TELEPORT_CONTROL, "Evoke Teleport Control", 4, 0, 200, 0, 0, ABFLAG_NONE},
+    { ABIL_EVOKE_TWISTER, "Evoke Twister", 10, 0, 200, 0, 0, ABFLAG_NONE},
 
     { ABIL_END_TRANSFORMATION, "End Transformation", 0, 0, 0, 0, 0, ABFLAG_NONE},
 
@@ -330,16 +331,14 @@ static const ability_def Ability_List[] =
     // Elyvilon
     { ABIL_ELYVILON_LIFESAVING, "Divine Protection",
       0, 0, 0, 0, 0, ABFLAG_NONE},
-    { ABIL_ELYVILON_LESSER_HEALING_SELF, "Lesser Self-Healing",
+    { ABIL_ELYVILON_LESSER_HEALING, "Lesser Healing",
       1, 0, 100, generic_cost::range(0, 1), 0, ABFLAG_CONF_OK},
-    { ABIL_ELYVILON_LESSER_HEALING_OTHERS, "Lesser Healing",
-      1, 0, 100, 0, 0, ABFLAG_NONE},
+    { ABIL_ELYVILON_HEAL_OTHER, "Heal Other",
+      2, 0, 250, 2, 0, ABFLAG_NONE},
     { ABIL_ELYVILON_PURIFICATION, "Purification", 3, 0, 300, 3, 0,
       ABFLAG_CONF_OK},
-    { ABIL_ELYVILON_GREATER_HEALING_SELF, "Greater Self-Healing",
+    { ABIL_ELYVILON_GREATER_HEALING, "Greater Healing",
       2, 0, 250, 3, 0, ABFLAG_CONF_OK},
-    { ABIL_ELYVILON_GREATER_HEALING_OTHERS, "Greater Healing",
-      2, 0, 250, 2, 0, ABFLAG_NONE},
     { ABIL_ELYVILON_DIVINE_VIGOUR, "Divine Vigour", 0, 0, 600, 6, 0,
       ABFLAG_CONF_OK},
 
@@ -412,31 +411,35 @@ static const ability_def Ability_List[] =
       8, 0, 0, 0, 0, ABFLAG_EXHAUSTION|ABFLAG_SKILL_DRAIN },
 
     { ABIL_RU_SACRIFICE_PURITY, "Sacrifice Purity",
-      0, 0, 0, 0, 0, ABFLAG_NONE },
+      0, 0, 0, 0, 0, ABFLAG_SACRIFICE },
     { ABIL_RU_SACRIFICE_WORDS, "Sacrifice Words",
-      0, 0, 0, 0, 0, ABFLAG_NONE },
+      0, 0, 0, 0, 0, ABFLAG_SACRIFICE },
     { ABIL_RU_SACRIFICE_DRINK, "Sacrifice Drink",
-      0, 0, 0, 0, 0, ABFLAG_NONE },
+      0, 0, 0, 0, 0, ABFLAG_SACRIFICE },
     { ABIL_RU_SACRIFICE_ESSENCE, "Sacrifice Essence",
-      0, 0, 0, 0, 0, ABFLAG_NONE },
+      0, 0, 0, 0, 0, ABFLAG_SACRIFICE },
     { ABIL_RU_SACRIFICE_HEALTH, "Sacrifice Health",
-      0, 0, 0, 0, 0, ABFLAG_NONE },
+      0, 0, 0, 0, 0, ABFLAG_SACRIFICE },
     { ABIL_RU_SACRIFICE_STEALTH, "Sacrifice Stealth",
-      0, 0, 0, 0, 0, ABFLAG_NONE },
+      0, 0, 0, 0, 0, ABFLAG_SACRIFICE },
     { ABIL_RU_SACRIFICE_ARTIFICE, "Sacrifice Artifice",
-      0, 0, 0, 0, 0, ABFLAG_NONE },
+      0, 0, 0, 0, 0, ABFLAG_SACRIFICE },
     { ABIL_RU_SACRIFICE_LOVE, "Sacrifice Love",
-      0, 0, 0, 0, 0, ABFLAG_NONE },
+      0, 0, 0, 0, 0, ABFLAG_SACRIFICE },
     { ABIL_RU_SACRIFICE_COURAGE, "Sacrifice Courage",
-      0, 0, 0, 0, 0, ABFLAG_NONE },
+      0, 0, 0, 0, 0, ABFLAG_SACRIFICE },
     { ABIL_RU_SACRIFICE_ARCANA, "Sacrifice Arcana",
-      0, 0, 0, 0, 0, ABFLAG_NONE },
+      0, 0, 0, 0, 0, ABFLAG_SACRIFICE },
     { ABIL_RU_SACRIFICE_NIMBLENESS, "Sacrifice Nimbleness",
-      0, 0, 0, 0, 0, ABFLAG_NONE },
+      0, 0, 0, 0, 0, ABFLAG_SACRIFICE },
     { ABIL_RU_SACRIFICE_DURABILITY, "Sacrifice Durability",
-      0, 0, 0, 0, 0, ABFLAG_NONE },
+      0, 0, 0, 0, 0, ABFLAG_SACRIFICE },
     { ABIL_RU_SACRIFICE_HAND, "Sacrifice a Hand",
-      0, 0, 0, 0, 0, ABFLAG_NONE },
+      0, 0, 0, 0, 0, ABFLAG_SACRIFICE },
+    { ABIL_RU_SACRIFICE_EXPERIENCE, "Sacrifice Experience",
+      0, 0, 0, 0, 0, ABFLAG_SACRIFICE },
+    { ABIL_RU_SACRIFICE_SKILL, "Sacrifice Skill",
+      0, 0, 0, 0, 0, ABFLAG_SACRIFICE },
     { ABIL_RU_REJECT_SACRIFICES, "Reject Sacrifices",
       0, 0, 0, 0, 0, ABFLAG_NONE },
 
@@ -503,19 +506,41 @@ const ability_def& get_ability_def(ability_type abil)
     return Ability_List[0];
 }
 
+/**
+ * Is there a valid ability with a name matching that given?
+ *
+ * @param key   The name in question. (Not case sensitive.)
+ * @return      true if such an ability exists; false if not.
+ */
 bool string_matches_ability_name(const string& key)
 {
-    for (int i = ABIL_SPIT_POISON; i <= ABIL_RENOUNCE_RELIGION; ++i)
+    return ability_by_name(key) != ABIL_NON_ABILITY;
+}
+
+/**
+ * Find an ability whose name matches the given key.
+ *
+ * @param name      The name in question. (Not case sensitive.)
+ * @return          The enum of the relevant ability, if there was one; else
+ *                  ABIL_NON_ABILITY.
+ */
+ability_type ability_by_name(const string &key)
+{
+    for (const auto &abil : Ability_List)
     {
-        const ability_def abil = get_ability_def(static_cast<ability_type>(i));
         if (abil.ability == ABIL_NON_ABILITY)
             continue;
 
+        // don't display zot abilties outside zotdef
+        if ((abil.flags & ABFLAG_ZOTDEF) && !crawl_state.game_is_zotdef())
+            continue;
+
         const string name = lowercase_string(ability_name(abil.ability));
-        if (name.find(key) != string::npos)
-            return true;
+        if (name == lowercase_string(key))
+            return abil.ability;
     }
-    return false;
+
+    return ABIL_NON_ABILITY;
 }
 
 string print_abilities()
@@ -768,8 +793,18 @@ const string make_cost_description(ability_type ability)
         const int amount = get_gold_cost(ability);
         if (amount)
             ret += make_stringf(", %d Gold", amount);
+        else if (ability == ABIL_GOZAG_POTION_PETITION)
+            ret += ", Free";
         else
             ret += ", Gold";
+    }
+
+    if (abil.flags & ABFLAG_SACRIFICE)
+    {
+        ret += ", ";
+        const string prefix = "Sacrifice ";
+        ret += string(ability_name(ability)).substr(prefix.size());
+        ret += ru_sac_text(ability);
     }
 
     // If we haven't output anything so far, then the effect has no cost
@@ -852,6 +887,8 @@ static const string _detailed_cost_description(ability_type ability)
         int gold_amount = get_gold_cost(ability);
         if (gold_amount)
             ret << gold_amount;
+        else if (ability == ABIL_GOZAG_POTION_PETITION)
+            ret << "free";
         else
             ret << "variable";
     }
@@ -1101,6 +1138,9 @@ talent get_talent(ability_type ability, bool check_confused)
     case ABIL_EVOKE_TELEPORT_CONTROL:
         failure = 50 - you.skill(SK_EVOCATIONS, 2);
         break;
+    case ABIL_EVOKE_TWISTER:
+        failure = 100 - you.skill(SK_EVOCATIONS, 4);
+        break;
         // end item abilities - some possibly mutagenic {dlb}
 
         // begin invocations {dlb}
@@ -1134,6 +1174,8 @@ talent get_talent(ability_type ability, bool check_confused)
     case ABIL_RU_SACRIFICE_NIMBLENESS:
     case ABIL_RU_SACRIFICE_DURABILITY:
     case ABIL_RU_SACRIFICE_HAND:
+    case ABIL_RU_SACRIFICE_EXPERIENCE:
+    case ABIL_RU_SACRIFICE_SKILL:
     case ABIL_RU_REJECT_SACRIFICES:
     case ABIL_STOP_RECALL:
         invoc = true;
@@ -1174,8 +1216,7 @@ talent get_talent(ability_type ability, bool check_confused)
     case ABIL_ZIN_RECITE:
     case ABIL_BEOGH_RECALL_ORCISH_FOLLOWERS:
     case ABIL_OKAWARU_HEROISM:
-    case ABIL_ELYVILON_LESSER_HEALING_SELF:
-    case ABIL_ELYVILON_LESSER_HEALING_OTHERS:
+    case ABIL_ELYVILON_LESSER_HEALING:
     case ABIL_LUGONU_ABYSS_EXIT:
     case ABIL_FEDHAS_SUNLIGHT:
     case ABIL_FEDHAS_EVOLUTION:
@@ -1198,8 +1239,8 @@ talent get_talent(ability_type ability, bool check_confused)
     case ABIL_SIF_MUNA_FORGET_SPELL:
     case ABIL_MAKHLEB_MINOR_DESTRUCTION:
     case ABIL_MAKHLEB_LESSER_SERVANT_OF_MAKHLEB:
-    case ABIL_ELYVILON_GREATER_HEALING_SELF:
-    case ABIL_ELYVILON_GREATER_HEALING_OTHERS:
+    case ABIL_ELYVILON_GREATER_HEALING:
+    case ABIL_ELYVILON_HEAL_OTHER:
     case ABIL_LUGONU_BEND_SPACE:
     case ABIL_FEDHAS_PLANT_RING:
     case ABIL_QAZLAL_UPHEAVAL:
@@ -1478,8 +1519,7 @@ static bool _check_ability_possible(const ability_def& abil,
         return false;
     }
 
-    if (silenced(you.pos()) && !you_worship(GOD_NEMELEX_XOBEH)
-          && !you_worship(GOD_RU))
+    if (silenced(you.pos()))
     {
         talent tal = get_talent(abil.ability, false);
         if (tal.is_invocation)
@@ -1697,6 +1737,15 @@ static bool _check_ability_possible(const ability_def& abil,
 
     case ABIL_GOZAG_BRIBE_BRANCH:
         return gozag_check_bribe_branch(quiet);
+
+    case ABIL_RU_SACRIFICE_EXPERIENCE:
+        if (you.experience_level <= RU_SAC_XP_LEVELS)
+        {
+            if (!quiet)
+                mpr("You don't have enough experience to sacrifice.");
+            return false;
+        }
+        return true;
 
     default:
         return true;
@@ -2221,18 +2270,20 @@ static spret_type _do_ability(const ability_def& abil, bool fail)
         switch (abil.ability)
         {
         case ABIL_BREATHE_FIRE:
+        {
             power = you.experience_level
                     + player_mutation_level(MUT_BREATHE_FLAMES) * 4;
 
             if (you.form == TRAN_DRAGON)
                 power += 12;
 
-            snprintf(info, INFO_SIZE, "You breathe a blast of fire%c",
-                     (power < 15) ? '.':'!');
+            string msg = "You breathe a blast of fire";
+            msg += (power < 15) ? '.' : '!';
 
-            if (!zapping(ZAP_BREATHE_FIRE, power, beam, true, info))
+            if (!zapping(ZAP_BREATHE_FIRE, power, beam, true, msg.c_str()))
                 return SPRET_ABORT;
             break;
+        }
 
         case ABIL_BREATHE_FROST:
             if (!zapping(ZAP_BREATHE_FROST,
@@ -2255,7 +2306,7 @@ static spret_type _do_ability(const ability_def& abil, bool fail)
 
         case ABIL_BREATHE_LIGHTNING:
             mpr("You breathe a wild blast of lightning!");
-            disc_of_storms(true);
+            black_drac_breath();
             break;
 
         case ABIL_SPIT_ACID:
@@ -2330,8 +2381,7 @@ static spret_type _do_ability(const ability_def& abil, bool fail)
 
     case ABIL_EVOKE_BLINK:      // randarts
     case ABIL_BLINK:            // mutation
-        fail_check();
-        random_blink(true);
+        return cast_blink(true, fail);
         break;
 
     case ABIL_EVOKE_BERSERK:    // amulet of rage, randarts
@@ -2400,6 +2450,11 @@ static spret_type _do_ability(const ability_def& abil, bool fail)
     case ABIL_EVOKE_TELEPORT_CONTROL:
         fail_check();
         cast_teleport_control(30 + you.skill(SK_EVOCATIONS, 2), false);
+        break;
+
+    case ABIL_EVOKE_TWISTER:
+        fail_check();
+        summon_twister(2);
         break;
 
     case ABIL_STOP_SINGING:
@@ -2759,20 +2814,17 @@ static spret_type _do_ability(const ability_def& abil, bool fail)
                      + random2avg(you.piety * BASELINE_DELAY, 2) / 10;
         break;
 
-    case ABIL_ELYVILON_LESSER_HEALING_SELF:
-    case ABIL_ELYVILON_LESSER_HEALING_OTHERS:
+    case ABIL_ELYVILON_LESSER_HEALING:
     {
         fail_check();
-        const bool self = (abil.ability == ABIL_ELYVILON_LESSER_HEALING_SELF);
         int pow = 3 + (you.skill_rdiv(SK_INVOCATIONS, 1, 6));
 #if TAG_MAJOR_VERSION == 34
-        if (self && you.species == SP_DJINNI)
+        if (you.species == SP_DJINNI)
             pow /= 2;
 #endif
         if (cast_healing(pow,
                          3 + (int) ceil(you.skill(SK_INVOCATIONS, 1) / 6.0),
-                         true, self ? you.pos() : coord_def(0, 0), !self,
-                         self ? TARG_NUM_MODES : TARG_INJURED_FRIEND)
+                         true, you.pos(), false, TARG_NUM_MODES)
                          == SPRET_ABORT)
         {
             return SPRET_ABORT;
@@ -2785,11 +2837,11 @@ static spret_type _do_ability(const ability_def& abil, bool fail)
         elyvilon_purification();
         break;
 
-    case ABIL_ELYVILON_GREATER_HEALING_SELF:
-    case ABIL_ELYVILON_GREATER_HEALING_OTHERS:
+    case ABIL_ELYVILON_GREATER_HEALING:
+    case ABIL_ELYVILON_HEAL_OTHER:
     {
         fail_check();
-        const bool self = (abil.ability == ABIL_ELYVILON_GREATER_HEALING_SELF);
+        const bool self = (abil.ability == ABIL_ELYVILON_GREATER_HEALING);
 
         int pow = 10 + (you.skill_rdiv(SK_INVOCATIONS, 1, 3));
 #if TAG_MAJOR_VERSION == 34
@@ -3091,6 +3143,8 @@ static spret_type _do_ability(const ability_def& abil, bool fail)
     case ABIL_RU_SACRIFICE_NIMBLENESS:
     case ABIL_RU_SACRIFICE_DURABILITY:
     case ABIL_RU_SACRIFICE_HAND:
+    case ABIL_RU_SACRIFICE_EXPERIENCE:
+    case ABIL_RU_SACRIFICE_SKILL:
         fail_check();
         if (!ru_do_sacrifice(abil.ability))
             return SPRET_ABORT;
@@ -3424,14 +3478,13 @@ string describe_talent(const talent& tal)
 {
     ASSERT(tal.which != ABIL_NON_ABILITY);
 
-    char* failure = failure_rate_to_string(tal.fail);
+    const string failure = failure_rate_to_string(tal.fail);
 
     ostringstream desc;
     desc << left
          << chop_string(ability_name(tal.which), 32)
          << chop_string(make_cost_description(tal.which), 30)
          << chop_string(failure, 7);
-    free(failure);
     return desc.str();
 }
 
@@ -3695,6 +3748,12 @@ vector<talent> your_talents(bool check_confused, bool include_unusable)
         _add_talent(talents, ABIL_EVOKE_TELEPORT_CONTROL, check_confused);
     }
 
+    if (you.scan_artefacts(ARTP_TWISTER)
+        && !player_mutation_level(MUT_NO_ARTIFICE))
+    {
+        _add_talent(talents, ABIL_EVOKE_TWISTER, check_confused);
+    }
+
     // Find hotkeys for the non-hotkeyed talents.
     for (talent &tal : talents)
     {
@@ -3764,8 +3823,6 @@ static int _is_god_ability(ability_type abil)
     // TODO: Fix that and remove the following.
     if (abil == ABIL_CHEIBRIADOS_TIME_BEND)
         return GOD_CHEIBRIADOS;
-    if (abil == ABIL_ELYVILON_LESSER_HEALING_OTHERS)
-        return GOD_ELYVILON;
     if (abil == ABIL_TROG_BURN_SPELLBOOKS)
         return GOD_TROG;
 
@@ -3795,11 +3852,6 @@ void set_god_ability_slots()
 
     // Finally, add in current god's invocations in traditional slots.
     int num = 0;
-    if (you_worship(GOD_ELYVILON))
-    {
-        _set_god_ability_helper(ABIL_ELYVILON_LESSER_HEALING_OTHERS,
-                                'a' + num++);
-    }
     if (you_worship(GOD_CHEIBRIADOS))
     {
         _set_god_ability_helper(ABIL_CHEIBRIADOS_TIME_BEND,
@@ -3816,15 +3868,9 @@ void set_god_ability_slots()
             if (you_worship(GOD_ELYVILON))
             {
                 if (god_abilities[you.religion][i]
-                        == ABIL_ELYVILON_LESSER_HEALING_SELF)
+                        == ABIL_ELYVILON_LESSER_HEALING)
                 {
                     _set_god_ability_helper(ABIL_ELYVILON_LIFESAVING, 'p');
-                }
-                else if (god_abilities[you.religion][i]
-                            == ABIL_ELYVILON_GREATER_HEALING_OTHERS)
-                {
-                    _set_god_ability_helper(ABIL_ELYVILON_GREATER_HEALING_SELF,
-                                            'a' + num++);
                 }
             }
             else if (you_worship(GOD_YREDELEMNUL))
@@ -3879,6 +3925,8 @@ static int _find_ability_slot(const ability_def &abil)
       || abil.ability == ABIL_RU_SACRIFICE_NIMBLENESS
       || abil.ability == ABIL_RU_SACRIFICE_DURABILITY
       || abil.ability == ABIL_RU_SACRIFICE_HAND
+      || abil.ability == ABIL_RU_SACRIFICE_EXPERIENCE
+      || abil.ability == ABIL_RU_SACRIFICE_SKILL
       || abil.ability == ABIL_RU_REJECT_SACRIFICES)
     {
         first_slot = letter_to_index('P');
@@ -3913,8 +3961,6 @@ vector<ability_type> get_god_abilities(bool include_unusable, bool ignore_piety)
     vector<ability_type> abilities;
     if (you_worship(GOD_TROG) && (include_unusable || !silenced(you.pos())))
         abilities.push_back(ABIL_TROG_BURN_SPELLBOOKS);
-    else if (you_worship(GOD_ELYVILON) && (include_unusable || !silenced(you.pos())))
-        abilities.push_back(ABIL_ELYVILON_LESSER_HEALING_OTHERS);
     else if (you_worship(GOD_CHEIBRIADOS) && (include_unusable
                                               || !(silenced(you.pos())
                                                    || player_under_penance())))
@@ -3940,15 +3986,9 @@ vector<ability_type> get_god_abilities(bool include_unusable, bool ignore_piety)
     else if (you.transfer_skill_points > 0)
         abilities.push_back(ABIL_ASHENZARI_END_TRANSFER);
 
-    // Remaining abilities are unusable if under penance, or if silenced if not
-    // Nemelex abilities.
-    if (!include_unusable && (player_under_penance()
-                              || silenced(you.pos())
-                              && !you_worship(GOD_NEMELEX_XOBEH)
-                              && !you_worship(GOD_RU)))
-    {
+    // Remaining abilities are unusable if under penance, or if silenced.
+    if (!include_unusable && (player_under_penance() || silenced(you.pos())))
         return abilities;
-    }
 
     for (int i = 0; i < MAX_GOD_ABILITIES; ++i)
     {
@@ -3969,10 +4009,8 @@ vector<ability_type> get_god_abilities(bool include_unusable, bool ignore_piety)
         }
 
         abilities.push_back(abil);
-        if (abil == ABIL_ELYVILON_LESSER_HEALING_SELF)
+        if (abil == ABIL_ELYVILON_LESSER_HEALING)
             abilities.push_back(ABIL_ELYVILON_LIFESAVING);
-        else if (abil == ABIL_ELYVILON_GREATER_HEALING_OTHERS)
-            abilities.push_back(ABIL_ELYVILON_GREATER_HEALING_SELF);
         else if (abil == ABIL_YRED_RECALL_UNDEAD_SLAVES
                  || abil == ABIL_STOP_RECALL && you_worship(GOD_YREDELEMNUL))
         {

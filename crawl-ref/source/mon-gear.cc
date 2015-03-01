@@ -232,7 +232,7 @@ static void _give_weapon(monster* mon, int level, bool melee_only = false,
     item.base_type = OBJ_UNASSIGNED;
 
     if (mon->type == MONS_DANCING_WEAPON || merc)
-        level = MAKE_GOOD_ITEM;
+        level = ISPEC_GOOD_ITEM;
 
     // moved setting of quantity here to keep it in mind {dlb}
     item.quantity = 1;
@@ -341,7 +341,7 @@ static void _give_weapon(monster* mon, int level, bool melee_only = false,
         item.sub_type = one_chance_in(3) ? WPN_DIRE_FLAIL : WPN_FLAIL;
         // "expensive" flail. {due}
         if (item.sub_type == WPN_FLAIL)
-            level = MAKE_GOOD_ITEM;
+            level = ISPEC_GOOD_ITEM;
 
         break;
 
@@ -411,7 +411,7 @@ static void _give_weapon(monster* mon, int level, bool melee_only = false,
         item.base_type = OBJ_WEAPONS;
         item.sub_type  = one_chance_in(3) ? WPN_TRIDENT : WPN_SPEAR;
         if (one_chance_in(3))
-            level = MAKE_GOOD_ITEM;
+            level = ISPEC_GOOD_ITEM;
         break;
 
     case MONS_PIKEL:
@@ -498,7 +498,7 @@ static void _give_weapon(monster* mon, int level, bool melee_only = false,
         item.base_type = OBJ_WEAPONS;
         item.sub_type = random_choose(WPN_DEMON_BLADE, WPN_DEMON_TRIDENT,
                                       WPN_DEMON_WHIP);
-        level = MAKE_GOOD_ITEM;
+        level = ISPEC_GOOD_ITEM;
         break;
 
     case MONS_RAKSHASA:
@@ -568,7 +568,7 @@ static void _give_weapon(monster* mon, int level, bool melee_only = false,
         break;
 
     case MONS_VASHNIA:
-        level = MAKE_GOOD_ITEM;
+        level = ISPEC_GOOD_ITEM;
         // deliberate fall-through
 
     case MONS_NAGA_SHARPSHOOTER:
@@ -638,7 +638,7 @@ static void _give_weapon(monster* mon, int level, bool melee_only = false,
         item.base_type = OBJ_WEAPONS;
         item.sub_type = random_choose(WPN_BARDICHE, WPN_DEMON_TRIDENT,
                                       WPN_GLAIVE);
-        level = MAKE_GOOD_ITEM;
+        level = ISPEC_GOOD_ITEM;
         break;
 
     case MONS_RUPERT:
@@ -651,7 +651,7 @@ static void _give_weapon(monster* mon, int level, bool melee_only = false,
                                                8, WPN_BATTLEAXE,
                                                2, WPN_EXECUTIONERS_AXE,
                                                0);
-        level = MAKE_GOOD_ITEM;
+        level = ISPEC_GOOD_ITEM;
         break;
 
     case MONS_WIGLAF:
@@ -705,7 +705,7 @@ static void _give_weapon(monster* mon, int level, bool melee_only = false,
     case MONS_DRACONIAN_KNIGHT:
         // being at the top has its privileges
         if (one_chance_in(3))
-            level = MAKE_GOOD_ITEM;
+            level = ISPEC_GOOD_ITEM;
         // deliberate fall-through
 
     case MONS_ORC_KNIGHT:
@@ -769,12 +769,6 @@ static void _give_weapon(monster* mon, int level, bool melee_only = false,
             2, WPN_FLAIL,       2, WPN_MORNINGSTAR,
             1, WPN_MACE,
             0);
-
-        if (mon->type == MONS_IRONHEART_PRESERVER && one_chance_in(3))
-        {
-            force_item = true;
-            set_item_ego_type(item, OBJ_WEAPONS, SPWPN_PROTECTION);
-        }
         break;
 
     case MONS_CYCLOPS:
@@ -798,7 +792,7 @@ static void _give_weapon(monster* mon, int level, bool melee_only = false,
         break;
 
     case MONS_REAPER:
-        level = MAKE_GOOD_ITEM;
+        level = ISPEC_GOOD_ITEM;
         // intentional fall-through...
     case MONS_SIGMUND:
         item.base_type = OBJ_WEAPONS;
@@ -839,21 +833,21 @@ static void _give_weapon(monster* mon, int level, bool melee_only = false,
                                                15, WPN_DEMON_TRIDENT,
                                                0);
         if (!one_chance_in(3))
-            level = MAKE_GOOD_ITEM;
+            level = ISPEC_GOOD_ITEM;
         break;
 
     case MONS_MERFOLK_AQUAMANCER:
         item.base_type = OBJ_WEAPONS;
         item.sub_type  = WPN_RAPIER;
         if (coinflip())
-            level = MAKE_GOOD_ITEM;
+            level = ISPEC_GOOD_ITEM;
         break;
 
     case MONS_MERFOLK_JAVELINEER:
         item.base_type = OBJ_WEAPONS;
         item.sub_type = WPN_SPEAR;
         if (!one_chance_in(3))
-            level = MAKE_GOOD_ITEM;
+            level = ISPEC_GOOD_ITEM;
         break;
 
     case MONS_MERFOLK:
@@ -1016,7 +1010,7 @@ static void _give_weapon(monster* mon, int level, bool melee_only = false,
                                                7, WPN_DEMON_TRIDENT,
                                                0);
         if (x_chance_in_y(5, 9))
-            level = MAKE_GOOD_ITEM;
+            level = ISPEC_GOOD_ITEM;
         break;
 
     case MONS_MARGERY:
@@ -1076,7 +1070,7 @@ static void _give_weapon(monster* mon, int level, bool melee_only = false,
                                                14, WPN_DEMON_TRIDENT,
                                                0);
         if (x_chance_in_y(5, 9))
-            level = MAKE_GOOD_ITEM;
+            level = ISPEC_GOOD_ITEM;
         else
         {
             item.plus += random2(6);
@@ -1107,7 +1101,7 @@ static void _give_weapon(monster* mon, int level, bool melee_only = false,
 
     case MONS_UNBORN:
         if (one_chance_in(6))
-            level = MAKE_GOOD_ITEM;
+            level = ISPEC_GOOD_ITEM;
         item.base_type = OBJ_WEAPONS;
         item.sub_type  = WPN_HAND_AXE;
         break;
@@ -1159,7 +1153,7 @@ static void _give_weapon(monster* mon, int level, bool melee_only = false,
         item.base_type = OBJ_WEAPONS;
         item.sub_type  = WPN_LAJATANG;
         if (!one_chance_in(3))
-            level = MAKE_GOOD_ITEM;
+            level = ISPEC_GOOD_ITEM;
         break;
 
     case MONS_SONJA:
@@ -1329,7 +1323,7 @@ static void _give_weapon(monster* mon, int level, bool melee_only = false,
                                        WPN_RAPIER,
                                        WPN_DEMON_WHIP,
                                        WPN_FLAIL);
-        level = MAKE_GOOD_ITEM;
+        level = ISPEC_GOOD_ITEM;
         if (mon->type == MONS_THE_ENCHANTRESS && one_chance_in(6))
         {
             force_item = true;
@@ -1382,7 +1376,7 @@ static void _give_weapon(monster* mon, int level, bool melee_only = false,
             force_item = true;
             set_item_ego_type(item, OBJ_WEAPONS, SPWPN_ELECTROCUTION);
         }
-        level = MAKE_GOOD_ITEM;
+        level = ISPEC_GOOD_ITEM;
         break;
 
     case MONS_DEMONSPAWN:
@@ -1445,7 +1439,7 @@ static void _give_weapon(monster* mon, int level, bool melee_only = false,
         break;
 
     case MONS_WARMONGER:
-        level = MAKE_GOOD_ITEM;
+        level = ISPEC_GOOD_ITEM;
         item.base_type = OBJ_WEAPONS;
         if (!melee_only)
         {
@@ -1478,7 +1472,7 @@ static void _give_weapon(monster* mon, int level, bool melee_only = false,
                                       WPN_DEMON_TRIDENT,
                                       WPN_MORNINGSTAR,
                                       WPN_BROAD_AXE);
-        level = MAKE_GOOD_ITEM;
+        level = ISPEC_GOOD_ITEM;
         break;
 
     case MONS_GARGOYLE:
@@ -1494,7 +1488,7 @@ static void _give_weapon(monster* mon, int level, bool melee_only = false,
     case MONS_WAR_GARGOYLE:
         item.base_type = OBJ_WEAPONS;
         if (one_chance_in(4))
-            level = MAKE_GOOD_ITEM;
+            level = ISPEC_GOOD_ITEM;
         item.sub_type = random_choose_weighted(10, WPN_MORNINGSTAR,
                                                10, WPN_FLAIL,
                                                5, WPN_DIRE_FLAIL,
@@ -1528,8 +1522,8 @@ static void _give_weapon(monster* mon, int level, bool melee_only = false,
     if (!force_item && mons_is_unique(mon->type))
     {
         if (x_chance_in_y(10 + mon->get_experience_level(), 100))
-            level = MAKE_GOOD_ITEM;
-        else if (level != MAKE_GOOD_ITEM)
+            level = ISPEC_GOOD_ITEM;
+        else if (level != ISPEC_GOOD_ITEM)
             level += 5;
     }
 
@@ -1720,7 +1714,7 @@ static void _give_ammo(monster* mon, int level, bool mons_summoned)
             weap_type  = MI_JAVELIN;
             qty        = random_range(9, 23, 2);
             if (one_chance_in(3))
-                level = MAKE_GOOD_ITEM;
+                level = ISPEC_GOOD_ITEM;
             break;
 
         case MONS_MERFOLK:
@@ -1866,13 +1860,12 @@ static void _give_shield(monster* mon, int level)
 
     case MONS_OCTOPODE_CRUSHER:
         if (one_chance_in(3))
-            level = MAKE_GOOD_ITEM;
+            level = ISPEC_GOOD_ITEM;
         if (coinflip())
             make_item_for_monster(mon, OBJ_ARMOUR, ARM_SHIELD, level);
         break;
 
     case MONS_DRACONIAN_KNIGHT:
-    case MONS_IRONHEART_PRESERVER:
         if (coinflip())
         {
             make_item_for_monster(mon, OBJ_ARMOUR,
@@ -1882,7 +1875,7 @@ static void _give_shield(monster* mon, int level)
         break;
     case MONS_TENGU_WARRIOR:
         if (one_chance_in(3))
-            level = MAKE_GOOD_ITEM;
+            level = ISPEC_GOOD_ITEM;
         // deliberate fall-through
     case MONS_TENGU:
     case MONS_DEMONSPAWN:
@@ -1895,7 +1888,7 @@ static void _give_shield(monster* mon, int level)
         break;
     case MONS_TENGU_REAVER:
         if (one_chance_in(3))
-            level = MAKE_GOOD_ITEM;
+            level = ISPEC_GOOD_ITEM;
         make_item_for_monster(mon, OBJ_ARMOUR, ARM_BUCKLER, level);
         break;
     case MONS_TENGU_CONJURER:
@@ -1910,7 +1903,7 @@ static void _give_shield(monster* mon, int level)
     case MONS_SPRIGGAN_DEFENDER:
     case MONS_THE_ENCHANTRESS:
         shield = make_item_for_monster(mon, OBJ_ARMOUR, ARM_BUCKLER,
-                      mon->type == MONS_THE_ENCHANTRESS ? MAKE_GOOD_ITEM :
+                      mon->type == MONS_THE_ENCHANTRESS ? ISPEC_GOOD_ITEM :
                       mon->type == MONS_SPRIGGAN_DEFENDER ? level * 2 + 1 :
                       level);
         if (shield && !is_artefact(*shield)) // ineligible...
@@ -1987,7 +1980,7 @@ static void _give_shield(monster* mon, int level)
     case MONS_WARMONGER:
         make_item_for_monster(mon, OBJ_ARMOUR,
                               coinflip() ? ARM_LARGE_SHIELD : ARM_SHIELD,
-                              MAKE_GOOD_ITEM);
+                              ISPEC_GOOD_ITEM);
         break;
     default:
         break;
@@ -2049,7 +2042,7 @@ static void _give_armour(monster* mon, int level, bool spectral_orcs, bool merc)
     case MONS_JOSEPHINE:
     case MONS_PSYCHE:
         if (one_chance_in(5))
-            level = MAKE_GOOD_ITEM;
+            level = ISPEC_GOOD_ITEM;
         item.base_type = OBJ_ARMOUR;
         item.sub_type  = ARM_ROBE;
         break;
@@ -2065,14 +2058,14 @@ static void _give_armour(monster* mon, int level, bool spectral_orcs, bool merc)
         break;
 
     case MONS_SOJOBO:
-        level = MAKE_GOOD_ITEM;
+        level = ISPEC_GOOD_ITEM;
         // deliberate fall-through
     case MONS_GNOLL_SERGEANT:
     case MONS_TENGU_REAVER:
         item.base_type = OBJ_ARMOUR;
         item.sub_type  = coinflip() ? ARM_RING_MAIL : ARM_SCALE_MAIL;
         if (type == MONS_TENGU_REAVER && one_chance_in(3))
-            level = MAKE_GOOD_ITEM;
+            level = ISPEC_GOOD_ITEM;
         break;
 
     case MONS_JOSEPH:
@@ -2111,7 +2104,7 @@ static void _give_armour(monster* mon, int level, bool spectral_orcs, bool merc)
 
     case MONS_WIGLAF:
         if (one_chance_in(3))
-            level = MAKE_GOOD_ITEM;
+            level = ISPEC_GOOD_ITEM;
         item.base_type = OBJ_ARMOUR;
         item.sub_type = random_choose_weighted(8, ARM_CHAIN_MAIL,
                                                10, ARM_PLATE_ARMOUR,
@@ -2121,7 +2114,7 @@ static void _give_armour(monster* mon, int level, bool spectral_orcs, bool merc)
 
     case MONS_JORGRUN:
         if (one_chance_in(3))
-            level = MAKE_GOOD_ITEM;
+            level = ISPEC_GOOD_ITEM;
         item.base_type = OBJ_ARMOUR;
         item.sub_type  = ARM_ROBE;
         break;
@@ -2136,7 +2129,7 @@ static void _give_armour(monster* mon, int level, bool spectral_orcs, bool merc)
     case MONS_SAINT_ROKA:
         // Being at the top has its privileges. :)
         if (one_chance_in(3))
-            level = MAKE_GOOD_ITEM;
+            level = ISPEC_GOOD_ITEM;
         // deliberate fall through
 
     case MONS_ORC_KNIGHT:
@@ -2150,7 +2143,6 @@ static void _give_armour(monster* mon, int level, bool spectral_orcs, bool merc)
     case MONS_FREDERICK:
     case MONS_VAULT_GUARD:
     case MONS_VAULT_WARDEN:
-    case MONS_IRONHEART_PRESERVER:
     case MONS_ANCIENT_CHAMPION:
         item.base_type = OBJ_ARMOUR;
         item.sub_type  = random_choose(ARM_CHAIN_MAIL, ARM_PLATE_ARMOUR);
@@ -2172,7 +2164,7 @@ static void _give_armour(monster* mon, int level, bool spectral_orcs, bool merc)
 
     case MONS_UNBORN:
         if (one_chance_in(6))
-            level = MAKE_GOOD_ITEM;
+            level = ISPEC_GOOD_ITEM;
 
     // deliberate fall through
     case MONS_HELLBINDER:
@@ -2206,7 +2198,7 @@ static void _give_armour(monster* mon, int level, bool spectral_orcs, bool merc)
 
     case MONS_OCTOPODE_CRUSHER:
         if (one_chance_in(3))
-            level = MAKE_GOOD_ITEM;
+            level = ISPEC_GOOD_ITEM;
         item.base_type = OBJ_ARMOUR;
         item.sub_type  = ARM_HAT;
         break;
@@ -2220,7 +2212,7 @@ static void _give_armour(monster* mon, int level, bool spectral_orcs, bool merc)
         break;
 
     case MONS_SERAPH:
-        level          = MAKE_GOOD_ITEM;
+        level          = ISPEC_GOOD_ITEM;
         item.base_type = OBJ_ARMOUR;
         // obscenely good, don't ever place them randomly
         item.sub_type  = coinflip() ? ARM_PEARL_DRAGON_ARMOUR
@@ -2272,11 +2264,12 @@ static void _give_armour(monster* mon, int level, bool spectral_orcs, bool merc)
     case MONS_VASHNIA:
         item.base_type = OBJ_ARMOUR;
         item.sub_type  = ARM_NAGA_BARDING;
-        level = MAKE_GOOD_ITEM;
+        level = ISPEC_GOOD_ITEM;
         break;
 
     case MONS_TENGU_WARRIOR:
     case MONS_DEMONSPAWN:
+    case MONS_IRONHEART_PRESERVER:
         item.base_type = OBJ_ARMOUR;
         item.sub_type  = coinflip() ? ARM_LEATHER_ARMOUR : ARM_RING_MAIL;
         break;
@@ -2293,7 +2286,7 @@ static void _give_armour(monster* mon, int level, bool spectral_orcs, bool merc)
             item.sub_type  = ARM_HAT;
 
             // Not as good as it sounds. Still just +0 a lot of the time.
-            level          = MAKE_GOOD_ITEM;
+            level          = ISPEC_GOOD_ITEM;
         }
         break;
 
@@ -2364,7 +2357,7 @@ static void _give_armour(monster* mon, int level, bool spectral_orcs, bool merc)
 
     case MONS_ORC_SORCERER:
         if (one_chance_in(3))
-            level = MAKE_GOOD_ITEM;
+            level = ISPEC_GOOD_ITEM;
     case MONS_ORC_WIZARD:
     case MONS_BLORK_THE_ORC:
     case MONS_NERGALLE:
@@ -2373,7 +2366,7 @@ static void _give_armour(monster* mon, int level, bool spectral_orcs, bool merc)
         break;
 
     case MONS_BORIS:
-        level = MAKE_GOOD_ITEM;
+        level = ISPEC_GOOD_ITEM;
         // fall-through
     case MONS_AGNES:
     case MONS_NECROMANCER:
@@ -2416,7 +2409,7 @@ static void _give_armour(monster* mon, int level, bool spectral_orcs, bool merc)
 
     case MONS_BLOOD_SAINT:
         if (one_chance_in(3))
-            level = MAKE_GOOD_ITEM;
+            level = ISPEC_GOOD_ITEM;
         item.base_type = OBJ_ARMOUR;
         item.sub_type  = ARM_ROBE;
         break;
@@ -2445,7 +2438,7 @@ static void _give_armour(monster* mon, int level, bool spectral_orcs, bool merc)
 
     case MONS_WARMONGER:
         if (coinflip())
-            level = MAKE_GOOD_ITEM;
+            level = ISPEC_GOOD_ITEM;
         item.base_type = OBJ_ARMOUR;
         item.sub_type  = random_choose_weighted( 50, ARM_CHAIN_MAIL,
                                                 100, ARM_PLATE_ARMOUR,
@@ -2469,7 +2462,7 @@ static void _give_armour(monster* mon, int level, bool spectral_orcs, bool merc)
 
     if (merc)
     {
-        level = MAKE_GOOD_ITEM;
+        level = ISPEC_GOOD_ITEM;
 
         if (item.base_type == OBJ_UNASSIGNED)
         {
@@ -2485,10 +2478,10 @@ static void _give_armour(monster* mon, int level, bool spectral_orcs, bool merc)
     const object_class_type xitc = item.base_type;
     const int xitt = item.sub_type;
 
-    if (!force_item && mons_is_unique(mon->type) && level != MAKE_GOOD_ITEM)
+    if (!force_item && mons_is_unique(mon->type) && level != ISPEC_GOOD_ITEM)
     {
         if (x_chance_in_y(9 + mon->get_experience_level(), 100))
-            level = MAKE_GOOD_ITEM;
+            level = ISPEC_GOOD_ITEM;
         else
             level = level * 2 + 5;
     }

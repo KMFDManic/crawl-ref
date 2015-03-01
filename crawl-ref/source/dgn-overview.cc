@@ -52,7 +52,6 @@ static void _seen_altar(god_type god, const coord_def& pos);
 static void _seen_staircase(const coord_def& pos);
 static void _seen_shop(const coord_def& pos);
 static void _seen_portal(dungeon_feature_type feat, const coord_def& pos);
-static void _seen_runed_door();
 
 static string _get_branches(bool display);
 static string _get_altars(bool display);
@@ -91,8 +90,6 @@ void seen_notable_thing(dungeon_feature_type which_thing, const coord_def& pos)
         _seen_shop(pos);
     else if (feat_is_gate(which_thing)) // overinclusive
         _seen_portal(which_thing, pos);
-    else if (which_thing == DNGN_RUNED_DOOR)
-        _seen_runed_door();
 }
 
 bool move_notable_thing(const coord_def& orig, const coord_def& dest)
@@ -418,7 +415,7 @@ static string _print_altars_for_gods(const vector<god_type>& gods,
             colour = "white";
         // Good gods don't inflict penance unless they hate your god.
         if (player_under_penance(god)
-            && (god == GOD_ASHENZARI || active_penance(god)))
+            && (xp_penance(god) || active_penance(god)))
         {
             // Active Nemelex penance starts at 101, not 1.
             colour = (you.penance[god] > (god == GOD_NEMELEX_XOBEH ? 110 : 10))
@@ -670,16 +667,57 @@ static void _seen_portal(dungeon_feature_type which_thing, const coord_def& pos)
     }
 }
 
-static void _seen_runed_door()
+#define SEEN_RUNED_DOOR_KEY "num_runed_doors"
+
+static void _update_runed_door_count(int old_num)
 {
     const level_id li = level_id::current();
+    const int new_num = env.properties[SEEN_RUNED_DOOR_KEY];
+    const string new_string = make_stringf("%d runed door%s", new_num,
+                                           new_num == 1 ? "" : "s");
+    const string old_string = make_stringf("%d runed door%s", old_num,
+                                           old_num == 1 ? "" : "s");
 
-    if (level_annotation_has("runed door", li))
+    //TODO: regexes
+    if (old_num > 0 && new_num > 0)
+    {
+       level_annotations[li] = replace_all(level_annotations[li],
+                                           old_string, new_string);
+    }
+    else if (old_num == 0)
+    {
+        if (!level_annotations[li].empty())
+            level_annotations[li] += ", ";
+        level_annotations[li] += new_string;
+    }
+    else if (new_num == 0)
+    {
+        level_annotations[li] = replace_all(level_annotations[li],
+                                            ", " + old_string, "");
+        level_annotations[li] = replace_all(level_annotations[li],
+                                            old_string, "");
+    }
+}
+
+void seen_runed_door()
+{
+    if (!env.properties.exists(SEEN_RUNED_DOOR_KEY))
+        env.properties[SEEN_RUNED_DOOR_KEY] = 0;
+
+    _update_runed_door_count(env.properties[SEEN_RUNED_DOOR_KEY].get_int()++);
+}
+
+void opened_runed_door()
+{
+#if TAG_MAJOR_VERSION > 34
+    ASSERT(env.properties.exists(SEEN_RUNED_DOOR_KEY));
+#endif
+
+    // Opening a runed door we haven't seen (because of door_vault, probably).
+    if (env.properties[SEEN_RUNED_DOOR_KEY].get_int() == 0)
         return;
 
-    if (!level_annotations[li].empty())
-        level_annotations[li] += ", ";
-    level_annotations[li] += "runed door";
+    _update_runed_door_count(env.properties[SEEN_RUNED_DOOR_KEY].get_int()--);
 }
 
 void enter_branch(branch_type branch, level_id from)
@@ -766,6 +804,7 @@ void set_unique_annotation(monster* mons, const level_id level)
 {
     if (!mons_is_or_was_unique(*mons)
         && mons->type != MONS_PLAYER_GHOST
+        || testbits(mons->flags, MF_SPECTRALISED)
         || mons->props.exists("no_annotate")
             && mons->props["no_annotate"].get_bool())
 

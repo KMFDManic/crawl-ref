@@ -183,11 +183,9 @@ int book_rarity(book_type which_book)
     case BOOK_MANUAL:
         return 20;
 
-    case BOOK_DESTRUCTION:
-        return 30;
-
 #if TAG_MAJOR_VERSION == 34
     case BOOK_WIZARDRY:
+    case BOOK_BUGGY_DESTRUCTION:
         return 100;
 #endif
 
@@ -343,11 +341,13 @@ bool maybe_id_book(item_def &book, bool silent)
     if (book.base_type != OBJ_BOOKS && book.base_type != OBJ_RODS)
         return false;
 
-    if (book.is_type(OBJ_BOOKS, BOOK_DESTRUCTION))
+#if TAG_MAJOR_VERSION == 34
+    if (book.is_type(OBJ_BOOKS, BOOK_BUGGY_DESTRUCTION))
     {
         ASSERT(fully_identified(book));
         return false;
     }
+#endif
 
     if (book.is_type(OBJ_BOOKS, BOOK_MANUAL))
     {
@@ -669,8 +669,8 @@ static bool _sort_mem_spells(spell_type a, spell_type b)
 
     // Don't sort by failure rate beyond what the player can see in the
     // success descriptions.
-    const int fail_rate_a = failure_rate_to_int(spell_fail(a));
-    const int fail_rate_b = failure_rate_to_int(spell_fail(b));
+    const int fail_rate_a = failure_rate_to_int(raw_spell_fail(a));
+    const int fail_rate_b = failure_rate_to_int(raw_spell_fail(b));
     if (fail_rate_a != fail_rate_b)
         return fail_rate_a < fail_rate_b;
 
@@ -825,9 +825,7 @@ static spell_type _choose_mem_spell(spell_list &spells,
 
         colour = failure_rate_colour(spell);
         desc << "<" << colour_to_str(colour) << ">";
-        char* failure = failure_rate_to_string(spell_fail(spell));
-        desc << chop_string(failure, 12);
-        free(failure);
+        desc << chop_string(failure_rate_to_string(raw_spell_fail(spell)), 12);
         desc << "</" << colour_to_str(colour) << ">";
         desc << spell_difficulty(spell);
 
@@ -988,18 +986,18 @@ bool learn_spell(spell_type specspell)
     if (!_learn_spell_checks(specspell))
         return false;
 
-    double chance = get_miscast_chance(specspell);
+    int severity = fail_severity(specspell);
 
-    if (spell_fail(specspell) >= 100 && !vehumet_is_offering(specspell))
+    if (raw_spell_fail(specspell) >= 100 && !vehumet_is_offering(specspell))
         mprf(MSGCH_WARN, "This spell is impossible to cast!");
-    else if (chance >= 0.025)
-        mprf(MSGCH_WARN, "This spell is very dangerous to cast!");
-    else if (chance >= 0.005)
-        mprf(MSGCH_WARN, "This spell is quite dangerous to cast!");
-    else if (chance >= 0.001)
-        mprf(MSGCH_WARN, "This spell is slightly dangerous to cast.");
+    else if (severity > 0)
+    {
+        mprf(MSGCH_WARN, "This spell is %s to cast%s",
+                         fail_severity_adjs[severity],
+                         severity > 1 ? "!" : ".");
+    }
 
-    snprintf(info, INFO_SIZE,
+    const string prompt = make_stringf(
              "Memorise %s, consuming %d spell level%s and leaving %d?",
              spell_title(specspell), spell_levels_required(specspell),
              spell_levels_required(specspell) != 1 ? "s" : "",
@@ -1007,7 +1005,7 @@ bool learn_spell(spell_type specspell)
 
     // Deactivate choice from tile inventory.
     mouse_control mc(MOUSE_MODE_MORE);
-    if (!yesno(info, true, 'n', false))
+    if (!yesno(prompt.c_str(), true, 'n', false))
     {
         canned_msg(MSG_OK);
         return false;
@@ -1025,10 +1023,12 @@ bool forget_spell_from_book(spell_type spell, const item_def* book)
 {
     string prompt;
 
-    prompt += make_stringf("Forgetting %s from %s will destroy the book! "
+    prompt += make_stringf("Forgetting %s from %s will destroy the book%s! "
                            "Are you sure?",
                            spell_title(spell),
-                           book->name(DESC_THE).c_str());
+                           book->name(DESC_THE).c_str(),
+                           you_worship(GOD_SIF_MUNA)
+                               ? " and put you under penance" : "");
 
     // Deactivate choice from tile inventory.
     mouse_control mc(MOUSE_MODE_MORE);
@@ -1071,10 +1071,11 @@ static bool _compare_spells(spell_type a, spell_type b)
     if (level_a != level_b)
         return level_a < level_b;
 
-    unsigned int schools_a = get_spell_disciplines(a);
-    unsigned int schools_b = get_spell_disciplines(b);
+    spschools_type schools_a = get_spell_disciplines(a);
+    spschools_type schools_b = get_spell_disciplines(b);
 
-    if (schools_a != schools_b && schools_a != 0 && schools_b != 0)
+    if (schools_a != schools_b && schools_a != SPTYP_NONE
+                               && schools_b != SPTYP_NONE)
     {
         const char* a_type = nullptr;
         const char* b_type = nullptr;
@@ -1082,7 +1083,7 @@ static bool _compare_spells(spell_type a, spell_type b)
         // Find lowest/earliest school for each spell.
         for (int i = 0; i <= SPTYP_LAST_EXPONENT; i++)
         {
-            int mask = 1 << i;
+            const auto mask = spschools_type::exponent(i);
             if (a_type == nullptr && (schools_a & mask))
                 a_type = spelltype_long_name(mask);
             if (b_type == nullptr && (schools_b & mask))
@@ -1446,7 +1447,7 @@ static bool _get_weighted_discs(bool completely_random, god_type god,
     vector<int> spellcount;
     for (int i = 0; i <= SPTYP_LAST_EXPONENT; i++)
     {
-        spschool_flag_type disc = static_cast<spschool_flag_type>(1 << i);
+        const spschool_flag_type disc = spschools_type::exponent(i);
         if (disc & SPTYP_DIVINATION)
             continue;
 
@@ -1523,7 +1524,8 @@ static bool _get_weighted_discs(bool completely_random, god_type god,
 }
 
 static bool _get_weighted_spells(bool completely_random, god_type god,
-                                 int disc1, int disc2,
+                                 spschool_flag_type disc1,
+                                 spschool_flag_type disc2,
                                  int num_spells, int max_levels,
                                  const vector<spell_type> &spells,
                                  spell_type chosen_spells[], bool exact_level)
@@ -1551,7 +1553,7 @@ static bool _get_weighted_spells(bool completely_random, god_type god,
         const int Spc = you.skills[SK_SPELLCASTING];
         for (spell_type spell : spells)
         {
-            unsigned int disciplines = get_spell_disciplines(spell);
+            const spschools_type disciplines = get_spell_disciplines(spell);
 
             int d = 1;
             if ((disciplines & disc1) && (disciplines & disc2))
@@ -1567,7 +1569,7 @@ static bool _get_weighted_spells(bool completely_random, god_type god,
             int num_skills  = 0;
             for (int j = 0; j <= SPTYP_LAST_EXPONENT; j++)
             {
-                int disc = 1 << j;
+                const auto disc = spschools_type::exponent(j);
 
                 if (disciplines & disc)
                 {
@@ -1630,7 +1632,8 @@ static bool _get_weighted_spells(bool completely_random, god_type god,
 }
 
 static void _remove_nondiscipline_spells(spell_type chosen_spells[],
-                                         int d1, int d2,
+                                         spschool_flag_type d1,
+                                         spschool_flag_type d2,
                                          spell_type exclude = SPELL_NO_SPELL)
 {
     int replace = -1;
@@ -1724,7 +1727,7 @@ bool make_book_theme_randart(item_def &book,
     if (max_levels == -1)
         max_levels = 255;
 
-    if (disc1 == 0 && disc2 == 0)
+    if (disc1 == SPTYP_NONE && disc2 == SPTYP_NONE)
     {
         if (!_get_weighted_discs(completely_random, god, disc1, disc2))
         {
@@ -1800,7 +1803,7 @@ bool make_book_theme_randart(item_def &book,
             continue;
 
         for (int k = 0; k <= SPTYP_LAST_EXPONENT; k++)
-            if (spell_typematch(chosen_spells[i], 1 << k))
+            if (spell_typematch(chosen_spells[i], spschools_type::exponent(k)))
                 count[k]++;
     }
 
@@ -1842,20 +1845,16 @@ bool make_book_theme_randart(item_def &book,
         max2 = max1;
 
     // Remove spells that don't fit either discipline.
-    _remove_nondiscipline_spells(chosen_spells, 1 << max1, 1 << max2);
+    // ... and change disc1 and disc2 accordingly.
+    disc1 = spschools_type::exponent(max1);
+    disc2 = spschools_type::exponent(max2);
+    _remove_nondiscipline_spells(chosen_spells, disc1, disc2);
     _add_included_spells(chosen_spells, incl_spells);
 
     // Resort spells.
     if (!incl_spells.empty())
         sort(chosen_spells, chosen_spells + RANDBOOK_SIZE, _compare_spells);
     ASSERT(chosen_spells[0] != SPELL_NO_SPELL);
-
-    // ... and change disc1 and disc2 accordingly.
-    disc1 = static_cast<spschool_flag_type>(1 << max1);
-    if (max1 == max2)
-        disc2 = disc1;
-    else
-        disc2 = static_cast<spschool_flag_type>(1 << max2);
 
     int highest_level = 0;
     int lowest_level  = 10;

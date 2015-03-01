@@ -5,48 +5,10 @@
 #include "libutil.h"
 #include "random.h"
 
-// March 2008: change order of species and jobs on character selection
-// screen as suggested by Markus Maier.
-// We have subsequently added a few new categories.
-static species_type species_order[] =
-{
-    // comparatively human-like looks
-    SP_HUMAN,          SP_HIGH_ELF,
-    SP_DEEP_ELF,       SP_DEEP_DWARF,
-    SP_HILL_ORC,
-    // small species
-    SP_HALFLING,       SP_KOBOLD,
-    SP_SPRIGGAN,
-    // large species
-    SP_OGRE,           SP_TROLL,
-    // significantly different body type from human ("monstrous")
-    SP_NAGA,           SP_CENTAUR,
-    SP_MERFOLK,        SP_MINOTAUR,
-    SP_TENGU,          SP_BASE_DRACONIAN,
-    SP_GARGOYLE,       SP_FORMICID,
-    // mostly human shape but made of a strange substance
-    SP_VINE_STALKER,
-    // celestial species
-    SP_DEMIGOD,        SP_DEMONSPAWN,
-    // undead species
-    SP_MUMMY,          SP_GHOUL,
-    SP_VAMPIRE,
-    // not humanoid at all
-    SP_FELID,          SP_OCTOPODE,
-};
-
 species_type random_draconian_player_species()
 {
     const int num_drac = SP_PALE_DRACONIAN - SP_RED_DRACONIAN + 1;
     return static_cast<species_type>(SP_RED_DRACONIAN + random2(num_drac));
-}
-
-species_type get_species(const int index)
-{
-    if (index < 0 || index >= ng_num_species())
-        return SP_UNKNOWN;
-
-    return species_order[index];
 }
 
 static const char * Species_Abbrev_List[NUM_SPECIES] =
@@ -64,15 +26,12 @@ static const char * Species_Abbrev_List[NUM_SPECIES] =
       "Dj", "LO",
 #endif
       "Gr", "Fo", "VS",
-      // placeholders
-      "El", "HD", "OM", "GE", "Gn", "MD",
-#if TAG_MAJOR_VERSION > 34
-      "SE", "Dj", "LO",
-#endif
 };
 
 const char *get_species_abbrev(species_type which_species)
 {
+    if (which_species == SP_UNKNOWN)
+        return "Ya";
     ASSERT_RANGE(which_species, 0, NUM_SPECIES);
 
     return Species_Abbrev_List[which_species];
@@ -97,13 +56,6 @@ species_type get_species_by_abbrev(const char *abbrev)
     }
 
     return (i < NUM_SPECIES) ? static_cast<species_type>(i) : SP_UNKNOWN;
-}
-
-int ng_num_species()
-{
-    // The list musn't be longer than the number of actual species.
-    COMPILE_CHECK(ARRAYSZ(species_order) <= NUM_SPECIES);
-    return ARRAYSZ(species_order);
 }
 
 // Does a case-sensitive lookup of the species name supplied.
@@ -475,24 +427,13 @@ monster_type player_species_to_mons_species(species_type species)
         return MONS_FORMICID;
     case SP_VINE_STALKER:
         return MONS_VINE_STALKER;
-    case SP_ELF:
-    case SP_HILL_DWARF:
-    case SP_MOUNTAIN_DWARF:
-    case SP_OGRE_MAGE:
-    case SP_GREY_ELF:
-    case SP_GNOME:
-#if TAG_MAJOR_VERSION > 34
-    case SP_SLUDGE_ELF:
-    case SP_DJINNI:
-#endif
     case NUM_SPECIES:
     case SP_UNKNOWN:
     case SP_RANDOM:
     case SP_VIABLE:
         die("player of an invalid species");
-    default:
-        return MONS_PROGRAM_BUG;
     }
+    return MONS_NO_MONSTER;
 }
 
 /**
@@ -518,27 +459,6 @@ string species_prayer_action(species_type species)
         default:
             return "kneel at";
     }
-}
-
-bool is_valid_species(species_type species)
-{
-    return species >= 0 && species <= LAST_VALID_SPECIES;
-}
-
-bool is_species_valid_choice(species_type species)
-{
-#if TAG_MAJOR_VERSION == 34
-    if (species == SP_SLUDGE_ELF
-        || species == SP_DJINNI
-        || species == SP_LAVA_ORC)
-    {
-        return false;
-    }
-#endif
-
-    // Non-base draconians cannot be selected either.
-    return is_valid_species(species)
-        && !(species >= SP_RED_DRACONIAN && species < SP_BASE_DRACONIAN);
 }
 
 int species_exp_modifier(species_type species)

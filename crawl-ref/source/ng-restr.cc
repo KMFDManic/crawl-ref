@@ -11,12 +11,13 @@
 #include "ng-restr.h"
 
 #include "jobs.h"
+#include "newgame.h"
 #include "newgame_def.h"
 #include "species.h"
 
 char_choice_restriction species_allowed(job_type job, species_type speci)
 {
-    if (!is_species_valid_choice(speci) || !is_job_valid_choice(job))
+    if (!is_starting_species(speci) || !is_starting_job(job))
         return CC_BANNED;
 
     switch (job)
@@ -111,26 +112,6 @@ char_choice_restriction species_allowed(job_type job, species_type speci)
         case SP_MERFOLK:
         case SP_BASE_DRACONIAN:
         case SP_DEMONSPAWN:
-            return CC_UNRESTRICTED;
-        default:
-            return CC_RESTRICTED;
-        }
-
-    case JOB_HEALER:
-        switch (speci)
-        {
-        case SP_DEMIGOD:
-        case SP_DEMONSPAWN:
-        case SP_MUMMY:
-        case SP_GHOUL:
-        case SP_VAMPIRE:
-            return CC_BANNED;
-        case SP_NAGA:
-        case SP_DEEP_DWARF:
-        case SP_HILL_ORC:
-        case SP_MINOTAUR:
-        case SP_BASE_DRACONIAN:
-        case SP_GARGOYLE:
             return CC_UNRESTRICTED;
         default:
             return CC_RESTRICTED;
@@ -410,7 +391,7 @@ char_choice_restriction species_allowed(job_type job, species_type speci)
 
 char_choice_restriction job_allowed(species_type speci, job_type job)
 {
-    if (!is_species_valid_choice(speci) || !is_job_valid_choice(job))
+    if (!is_starting_species(speci) || !is_starting_job(job))
         return CC_BANNED;
 
     switch (speci)
@@ -477,7 +458,6 @@ char_choice_restriction job_allowed(species_type speci, job_type job)
             case JOB_GLADIATOR:
             case JOB_BERSERKER:
             case JOB_ABYSSAL_KNIGHT:
-            case JOB_HEALER:
             case JOB_NECROMANCER:
             case JOB_FIRE_ELEMENTALIST:
                 return CC_UNRESTRICTED;
@@ -501,7 +481,6 @@ char_choice_restriction job_allowed(species_type speci, job_type job)
     case SP_MUMMY:
         switch (job)
         {
-            case JOB_HEALER:
             case JOB_TRANSMUTER:
                 return CC_BANNED;
             case JOB_WIZARD:
@@ -588,7 +567,6 @@ char_choice_restriction job_allowed(species_type speci, job_type job)
             case JOB_BERSERKER:
             case JOB_ABYSSAL_KNIGHT:
             case JOB_CHAOS_KNIGHT:
-            case JOB_HEALER:
                 return CC_BANNED;
             case JOB_TRANSMUTER:
             case JOB_CONJURER:
@@ -630,8 +608,6 @@ char_choice_restriction job_allowed(species_type speci, job_type job)
     case SP_DEMONSPAWN:
         switch (job)
         {
-            case JOB_HEALER:
-                return CC_BANNED;
             case JOB_GLADIATOR:
             case JOB_BERSERKER:
             case JOB_ABYSSAL_KNIGHT:
@@ -647,7 +623,6 @@ char_choice_restriction job_allowed(species_type speci, job_type job)
     case SP_GHOUL:
         switch (job)
         {
-            case JOB_HEALER:
             case JOB_TRANSMUTER:
                 return CC_BANNED;
             case JOB_WARPER:
@@ -691,8 +666,6 @@ char_choice_restriction job_allowed(species_type speci, job_type job)
     case SP_VAMPIRE:
         switch (job)
         {
-            case JOB_HEALER:
-                return CC_BANNED;
             case JOB_MONK:
             case JOB_ASSASSIN:
             case JOB_ENCHANTER:
@@ -709,7 +682,6 @@ char_choice_restriction job_allowed(species_type speci, job_type job)
             case JOB_FIGHTER:
             case JOB_HUNTER:
             case JOB_BERSERKER:
-            case JOB_HEALER:
             case JOB_NECROMANCER:
             case JOB_EARTH_ELEMENTALIST:
                 return CC_UNRESTRICTED;
@@ -759,7 +731,6 @@ char_choice_restriction job_allowed(species_type speci, job_type job)
             case JOB_GLADIATOR:
             case JOB_BERSERKER:
             case JOB_ABYSSAL_KNIGHT:
-            case JOB_HEALER:
             case JOB_NECROMANCER:
             case JOB_FIRE_ELEMENTALIST:
                 return CC_UNRESTRICTED;
@@ -788,7 +759,6 @@ char_choice_restriction job_allowed(species_type speci, job_type job)
             case JOB_FIGHTER:
             case JOB_HUNTER:
             case JOB_ABYSSAL_KNIGHT:
-            case JOB_HEALER:
             case JOB_ARCANE_MARKSMAN:
             case JOB_EARTH_ELEMENTALIST:
             case JOB_VENOM_MAGE:
@@ -832,8 +802,8 @@ bool is_good_combination(species_type spc, job_type job, bool species_first,
 char_choice_restriction weapon_restriction(weapon_type wpn,
                                            const newgame_def &ng)
 {
-    ASSERT(is_valid_species(ng.species));
-    ASSERT(is_valid_job(ng.job));
+    ASSERT_RANGE(ng.species, 0, NUM_SPECIES);
+    ASSERT_RANGE(ng.job, 0, NUM_JOBS);
     ASSERT(ng.species == SP_BASE_DRACONIAN
            || species_genus(ng.species) != GENPC_DRACONIAN);
     switch (wpn)

@@ -47,7 +47,7 @@ The contents of this text are:
                 tc_excluded, tc_exclude_circle,
                 runrest_ignore_message, runrest_stop_message,
                 runrest_safe_poison, runrest_ignore_monster,
-                trapwalk_safe_hp, rest_wait_both, auto_exclude
+                rest_wait_both, auto_exclude
 3-g     Command Enhancements.
                 auto_switch, travel_open_doors, easy_unequip, equip_unequip,
                 jewellery_prompt, easy_confirm, allow_self_target,
@@ -55,8 +55,9 @@ The contents of this text are:
                 easy_exit_menu, sort_menus, spell_slot, autofight_stop,
                 autofight_throw, autofight_throw_nomove, autofight_fire_stop,
                 autofight_caught, automagic_enable, automagic_slot,
-                automagic_fight, automagic_stop
-3-i     Message and Display Improvements.
+                automagic_fight, automagic_stop, fail_severity_to_confirm,
+                easy_door
+3-h     Message and Display Improvements.
                 hp_warning, mp_warning, hp_colour, mp_colour, stat_colour,
                 status_caption_colour, enemy_hp_colour, clear_messages,
                 show_more, small_more, show_newturn_mark,
@@ -74,10 +75,10 @@ The contents of this text are:
                 plain, prompt, god, pray, duration, danger, food, warning,
                 recovery, talk, talk_visual, timed_portal, sound,
                 intrinsic_gain, mutation, monster_spell, monster_enchant,
-                friend_spell, friend_enchant, friend_action, monster_damage,
-                monster_target, banishment, rotten_meat, equipment, floor,
-                multiturn, examine, examine_filter, diagnostics, error,
-                tutorial, orb, hell_effect
+                monster_warning, friend_spell, friend_enchant, friend_action,
+                monster_damage, monster_target, banishment, rotten_meat,
+                equipment, floor, multiturn, examine, examine_filter,
+                diagnostic, error, tutorial, orb, hell_effect, dgl_message
 3-l     Inscriptions.
                 autoinscribe, show_god_gift
 3-m     Macro related Options.
@@ -123,7 +124,7 @@ The contents of this text are:
 5-a     All OS.
                 mouse_input, wiz_mode, explore_mode, char_set, colour,
                 display_char, feature, mon_glyph, item_glyph,
-                use_fake_player_cursor, show_player_species
+                use_fake_player_cursor, show_player_species, fake_lang, pizza
 
 5-b     DOS and Windows.
                 dos_use_background_intensity
@@ -680,6 +681,14 @@ scroll_margin = 2
         An aliased option that sets both scroll_margin_x and
         scroll_margin_y.
 
+always_show_exclusions = true
+        If true, display travel exclusions and their exclusion radius in
+        the viewport. Exclusions are always visible on the level map
+        (access with X) regardless of the value of this option.
+        Exclusions are also visible in terrain-only mode (access with |).
+        This option has no effect in tiles builds, where exclusions are
+        always shown both in the viewport and on the level map.
+
 3-f     Travel and Exploration.
 -------------------------------
 
@@ -889,11 +898,6 @@ runrest_ignore_monster ^= <regex>:<distance>, <regex>:<distance>, ...
         and resting as long as the distance is at least 3. If a monster matches
         multiple expressions, its distance is compared with the first match.
 
-trapwalk_safe_hp = true
-        If set to false, mechanical traps will be considered safe for travel
-        at any HP. Otherwise, you will get a prompt when walking onto one and
-        autotravel will avoid them.
-
 rest_wait_both = false
         If rest_wait_both is set to true then resting will only stop
         when both HP and MP are fully restored, not when either one of
@@ -934,6 +938,10 @@ jewellery_prompt = false
         available empty slot. Unequipping jewellery will also always prompt for
         an item to remove, instead of skipping the prompt if only one item
         of jewellery is equipped.
+
+show_uncursed = true
+        Whether items that are known to be uncursed will contain "uncursed"
+        as part of their displayed name.
 
 easy_confirm = (none | safe | all)
         Make confirmation questions easier to answer:
@@ -1163,6 +1171,10 @@ autofight_caught = false
         If true, autofight will attempt to escape webs or nets that are
         holding you, even if no enemies are in view.
 
+autofight_wait = false
+        If true, ===hit_closest_nomove while not in range of an enemy will
+        wait for a turn instead of aborting autofight.
+
 automagic_enable = false
         If true, the autofight function will resort to casting an assigned
         spell at a target. Initial spell slot is a.
@@ -1182,6 +1194,23 @@ automagic_stop = 0
         Similar to autofight_stop, if magic points are below this number
         (percentage of total), casting is prevented. What happens depends
         on automagic_fight setting.
+
+fail_severity_to_confirm = 3
+        Ask for confirmation when attempting to cast a spell where a miscast
+        would cause severe penalties. Prompt if the miscast severity of the
+        spell (the colour shown in the spellcasting menu) is greater than
+        or equal to the number specified:
+
+          3: dark red
+          2: light red or higher
+          1: yellow or higher
+
+        If the value 0 or -1 is given, never prompt about miscasts.
+
+easy_door = true
+        When (O)pening or (C)losing doors, do not prompt for a direction
+        if there is only one adjacent door. This option does not affect
+        opening doors by walking into them.
 
 3-h     Messages and Display Enhancements.
 ------------------------------------------
@@ -1558,6 +1587,7 @@ CHANNEL_NAME can currently be one of these:
    mutation        = gain/lose mutations
    monster_spell   = messages about monsters gesturing or casting spells
    monster_enchant = messages pertaining to monster enchantments
+   monster_warning = monsters coming into view
    friend_spell    = as monster_spell, but only for friendly monsters
    friend_enchant  = as monster_enchant, but only for friendly monsters
    friend_action   = other actions by friendly monsters
@@ -1570,11 +1600,12 @@ CHANNEL_NAME can currently be one of these:
    multiturn       = indicates long actions (wearing armour, dissecting etc.)
    examine         = messages from examining your surroundings
    examine_filter  = boring messages from examining your surroundings
-   diagnostics     = debugging messages
+   diagnostic      = debugging messages
    error           = error messages
    tutorial        = messages from the tutorial
    orb             = messages about the Orb of Zot
    hell_effect     = messages about environmental effects of the Hells
+   dgl_message     = messages from watchers (online console games only)
 
 The channel options are
    mute      = show no messages from channel (dangerous, be careful!)
@@ -2313,6 +2344,9 @@ item_glyph -= <regexp>
         Removing a rule with -= removes all rules using the exact regexp
         provided; do not specify a colour or glyph in that case.
 
+pizza = <topping name>
+        A comma-separated list of the player's preferred pizza toppings.
+
 use_fake_player_cursor = true
         Makes the main view highlight the player without using the
         terminal cursor. This means it won't flicker when the cursor
@@ -2323,6 +2357,15 @@ show_player_species = false
         Displays your character as a member of its species. For example, if
         you're a Hill Orc, you will be shown as an 'o' rather than '@'. Has
         no effect in Tiles.
+
+fake_lang = <lang1>[,<lang2>[,...]]
+        Set one or more fake languages, applied in the order provided (order
+        does matter!) The same language can be set more than once, though it
+        may not end up making much sense... At most 3 fake langs can be set at
+        a time.
+
+        Options are: (dwarven|jagerkin|kraut|runes|wide|grunt|butt:<n>)
+        Experiment to find out what they do!
 
 5-b     DOS and Windows.
 ------------------------

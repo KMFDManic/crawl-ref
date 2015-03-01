@@ -74,7 +74,6 @@ Spit Acid ability
 
 Spit acid at a targeted monster.
 %%%%
-# Both for Fly I and II.
 Fly ability
 
 Start flying. During flight you can safely cross water and similar obstacles.
@@ -164,6 +163,10 @@ approximate target for a teleport, or by selecting a direction for a blink. Be
 wary that controlled translocations will cause the subject to become
 contaminated with magical energy, and that controlled teleports will take
 longer to trigger than uncontrolled ones.
+%%%%
+Evoke Twister ability
+
+Summons a tornado nearby. The furious winds can harm friend and foe alike.
 %%%%
 End Transformation ability
 
@@ -365,22 +368,6 @@ Beware: killing others while asking to be spared yourself is a major sin!
 %%%%
 Lesser Healing ability
 
-Depending on your Invocations skill, heal a creature other than you by a small
-amount. Using this ability on hostile monsters will try to make them neutral.
-This works best on animals, worse on humanoids of your species, still worse on
-other humanoids, and worst of all on demons and undead. Mindless creatures
-cannot be pacified, and no monster can be pacified while it is asleep. The
-chance for successful pacification depends on the healing power.
-
-Whether the pacification succeeds or not, the invested food and magic are lost.
-If it does succeed, the monster is healed and you gain half the monster's
-experience value and possibly some piety. Otherwise, the monster is unaffected
-and you gain nothing.
-
-You can also heal allies and neutral monsters.
-%%%%
-Lesser Self-Healing ability
-
 Depending on your Invocations skill, heal a small amount of health.
 %%%%
 Purification ability
@@ -389,24 +376,23 @@ Purge your body of all bad effects such as sickness, poisoning, slowness,
 petrification, confusion and rot, and fully restore your Strength, Dexterity
 and Intelligence.
 %%%%
-Greater Healing ability
+Heal Other ability
 
 Depending on your Invocations skill, heal a creature other than you by a
 moderate amount. Using this ability on hostile monsters will try to make them
 neutral. This works best on animals, worse on humanoids of your species, still
 worse on other humanoids, and worst of all on demons and undead. Mindless
 creatures cannot be pacified, and no monster can be pacified while it is
-asleep. The chance for successful pacification depends on the healing power, so
-it is significantly better than using Lesser Healing.
+asleep.
 
 Whether the pacification succeeds or not, the invested food, piety and magic
 points are lost. If it does succeed, the monster is healed and you gain half
-the monster's experience value and possibly some piety. Otherwise, the monster
-is unaffected and you gain nothing.
+the monster's experience value. Otherwise, the monster is unaffected and you
+gain nothing.
 
 You can also heal allies and neutral monsters.
 %%%%
-Greater Self-Healing ability
+Greater Healing ability
 
 Depending on your Invocations skill, heal a moderate amount of health.
 Roughly, Greater Healing will allow you to heal three times the amount of
@@ -432,7 +418,8 @@ would usually prevent translocations.
 %%%%
 Banish ability
 
-Attempt to banish a monster into the Abyss.
+Attempt to banish a creature into the Abyss. If the attempt succeeds, you gain
+some piety and half the creature's experience value.
 %%%%
 Corrupt ability
 
@@ -795,6 +782,28 @@ Sacrifice a Hand ability
 Adherents of every species who choose to sacrifice a hand lose the ability to
 use shields and can wear one fewer ring. Non-formicids also lose the ability
 to wield two-handed weapons.
+
+If you make this sacrifice, your powers granted by Ru will become stronger in
+proportion to the value of the sacrifice, and you may gain new powers as well.
+
+Sacrifices cannot be taken back.
+%%%%
+Sacrifice Experience ability
+
+Adherents who choose to sacrifice their experience will lose two levels
+immediately and also have the maximum level they can attain lowered by two
+levels.
+
+If you make this sacrifice, your powers granted by Ru will become stronger in
+proportion to the value of the sacrifice, and you may gain new powers as well.
+
+Sacrifices cannot be taken back.
+%%%%
+Sacrifice Skill ability
+
+Adherents who choose to sacrifice their skills will get -1 to all of their
+skill aptitudes. This will likely cause the adherent to lose ranks in skills
+they have trained.
 
 If you make this sacrifice, your powers granted by Ru will become stronger in
 proportion to the value of the sacrifice, and you may gain new powers as well.

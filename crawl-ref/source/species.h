@@ -23,10 +23,7 @@ bool species_can_throw_large_rocks(species_type species);
 size_type species_size(species_type species,
                        size_part_type psize = PSIZE_TORSO);
 
-// from newgame.cc
-species_type get_species(const int index);
 species_type random_draconian_player_species();
-int ng_num_species();
 species_type get_species_by_abbrev(const char *abbrev);
 const char *get_species_abbrev(species_type which_species);
 
@@ -37,12 +34,6 @@ string species_walking_verb(species_type sp);
 
 monster_type player_species_to_mons_species(species_type species);
 string species_prayer_action(species_type species);
-
-// species_type bounds checking.
-bool is_valid_species(species_type);
-
-// Is the species valid for a new game?
-bool is_species_valid_choice(species_type);
 
 int species_exp_modifier(species_type species);
 int species_hp_modifier(species_type species);

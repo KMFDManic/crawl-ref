@@ -102,6 +102,8 @@ public:
     }
 
     void save(writer &outf);
+    void save_persist();
+    void load_persist();
     void gc();
 
     void setglobal(const char *name);
@@ -126,6 +128,7 @@ public:
     void pushglobal(const string &name);
 
     maybe_bool callmbooleanfn(const char *fn, const char *params, ...);
+    maybe_bool callmaybefn(const char *fn, const char *params, ...);
     bool callbooleanfn(bool defval, const char *fn, const char *params, ...);
     bool callfn(const char *fn, int nargs, int nret = 1);
     bool callfn(const char *fn, const char *params, ...);
@@ -189,6 +192,8 @@ private:
                    int retc = -1, va_list *fnr = nullptr);
     maybe_bool callmbooleanfn(const char *fn, const char *params,
                               va_list args);
+    maybe_bool callmaybefn(const char *fn, const char *params,
+                           va_list args);
 
     int push_args(lua_State *ls, const char *format, va_list args,
                     va_list *cpto = nullptr);

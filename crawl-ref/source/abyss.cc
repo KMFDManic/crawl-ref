@@ -20,9 +20,11 @@
 #include "colour.h"
 #include "coordit.h"
 #include "dbg-scan.h"
+#include "delay.h"
 #include "dgn-overview.h"
 #include "dgn-proclayouts.h"
 #include "files.h"
+#include "hiscores.h"
 #include "itemprop.h"
 #include "items.h"
 #include "libutil.h"
@@ -40,10 +42,12 @@
 #include "religion.h"
 #include "stash.h"
 #include "state.h"
+#include "stairs.h"
 #include "stringutil.h"
 #include "terrain.h"
 #include "tiledef-dngn.h"
 #include "tileview.h"
+#include "timed_effects.h"
 #include "traps.h"
 #include "travel.h"
 #include "view.h"
@@ -253,11 +257,10 @@ static bool _abyss_place_rune_vault(const map_bitmask &abyss_genlevel_mask)
     return result;
 }
 
-static bool _abyss_place_rune(const map_bitmask &abyss_genlevel_mask,
-                              bool use_vaults)
+static bool _abyss_place_rune(const map_bitmask &abyss_genlevel_mask)
 {
     // Use a rune vault if there's one.
-    if (use_vaults && _abyss_place_rune_vault(abyss_genlevel_mask))
+    if (_abyss_place_rune_vault(abyss_genlevel_mask))
         return true;
 
     coord_def chosen_spot;
@@ -305,15 +308,14 @@ static bool _abyss_square_accepts_items(const map_bitmask &abyss_genlevel_mask,
 }
 
 static int _abyss_create_items(const map_bitmask &abyss_genlevel_mask,
-                               bool placed_abyssal_rune,
-                               bool use_vaults)
+                               bool placed_abyssal_rune)
 {
     // During game start, number and level of items mustn't be higher than
     // that on level 1.
     int num_items = 150, items_level = 52;
     int items_placed = 0;
 
-    if (you.char_direction == GDT_GAME_START)
+    if (player_in_starting_abyss())
     {
         num_items   = 3 + roll_dice(3, 11);
         items_level = 0;
@@ -338,7 +340,6 @@ static int _abyss_create_items(const map_bitmask &abyss_genlevel_mask,
                 // is acceptable.
                 if (!placed_abyssal_rune && !should_place_abyssal_rune
                     && abyssal_rune_roll != -1
-                    && you.char_direction != GDT_GAME_START
                     && x_chance_in_y(abyssal_rune_roll, ABYSSAL_RUNE_MAX_ROLL))
                 {
                     should_place_abyssal_rune = true;
@@ -351,7 +352,7 @@ static int _abyss_create_items(const map_bitmask &abyss_genlevel_mask,
 
     if (!placed_abyssal_rune && should_place_abyssal_rune)
     {
-        if (_abyss_place_rune(abyss_genlevel_mask, use_vaults))
+        if (_abyss_place_rune(abyss_genlevel_mask))
             ++items_placed;
     }
 
@@ -373,6 +374,52 @@ static int _abyss_create_items(const map_bitmask &abyss_genlevel_mask,
     }
 
     return items_placed;
+}
+
+static string _who_banished(const string &who)
+{
+    return who.empty() ? who : " (" + who + ")";
+}
+
+void banished(const string &who)
+{
+    ASSERT(!crawl_state.game_is_arena());
+    push_features_to_abyss();
+    if (brdepth[BRANCH_ABYSS] == -1)
+        return;
+
+    if (!player_in_branch(BRANCH_ABYSS))
+    {
+        mark_milestone("abyss.enter",
+                       "was cast into the Abyss!" + _who_banished(who));
+    }
+
+    if (player_in_branch(BRANCH_ABYSS))
+    {
+        if (level_id::current().depth < brdepth[BRANCH_ABYSS])
+            down_stairs(DNGN_ABYSSAL_STAIR);
+        else
+        {
+            // On Abyss:5 we can't go deeper; cause a shift to a new area
+            mprf(MSGCH_BANISHMENT, "You are banished to a different region of the Abyss.");
+            abyss_teleport();
+        }
+        return;
+    }
+
+    const string what = "Cast into the Abyss" + _who_banished(who);
+    take_note(Note(NOTE_MESSAGE, 0, 0, what.c_str()), true);
+
+    stop_delay(true);
+    run_animation(ANIMATION_BANISH, UA_BRANCH_ENTRY, false);
+    down_stairs(DNGN_ENTER_ABYSS);  // heh heh
+
+    // Xom just might decide to interfere.
+    if (you_worship(GOD_XOM) && who != "Xom" && who != "wizard command"
+        && who != "a distortion unwield")
+    {
+        xom_maybe_reverts_banishment(false, false);
+    }
 }
 
 void push_features_to_abyss()
@@ -1241,15 +1288,13 @@ static void _abyss_apply_terrain(const map_bitmask &abyss_genlevel_mask,
                                 DNGN_EXIT_ABYSS,
                                 abyss_genlevel_mask)
         ||
-        you.char_direction != GDT_GAME_START
-        && _abyss_check_place_feat(p, 10000,
-                                   &altars_wanted,
-                                   nullptr,
-                                   _abyss_pick_altar(),
-                                   abyss_genlevel_mask)
+        _abyss_check_place_feat(p, 10000,
+                                &altars_wanted,
+                                nullptr,
+                                _abyss_pick_altar(),
+                                abyss_genlevel_mask)
         ||
-        you.char_direction != GDT_GAME_START
-        && level_id::current().depth < brdepth[BRANCH_ABYSS]
+        level_id::current().depth < brdepth[BRANCH_ABYSS]
         && _abyss_check_place_feat(p, 1900, nullptr, nullptr,
                                    DNGN_ABYSSAL_STAIR,
                                    abyss_genlevel_mask);
@@ -1317,18 +1362,14 @@ static void _generate_area(const map_bitmask &abyss_genlevel_mask)
 
     _abyss_apply_terrain(abyss_genlevel_mask);
 
-    bool use_vaults = you.char_direction != GDT_GAME_START;
+    // Make sure we're not about to link bad items.
+    debug_item_scan();
+    _abyss_place_vaults(abyss_genlevel_mask);
 
-    if (use_vaults)
-    {
-        // Make sure we're not about to link bad items.
-        debug_item_scan();
-        _abyss_place_vaults(abyss_genlevel_mask);
+    // Link the vault-placed items.
+    _abyss_postvault_fixup();
 
-        // Link the vault-placed items.
-        _abyss_postvault_fixup();
-    }
-    _abyss_create_items(abyss_genlevel_mask, placed_abyssal_rune, use_vaults);
+    _abyss_create_items(abyss_genlevel_mask, placed_abyssal_rune);
     setup_environment_effects();
 
     _ensure_player_habitable(true);
@@ -1524,7 +1565,7 @@ retry:
     // an altar to Lugonu and there's an exit near-by.
     // Otherwise, we start out on floor and there's a chance there's an
     // altar near-by.
-    if (you.char_direction == GDT_GAME_START)
+    if (player_in_starting_abyss())
     {
         grd(ABYSS_CENTRE) = DNGN_ALTAR_LUGONU;
         const coord_def eloc = _place_feature_near(ABYSS_CENTRE, LOS_RADIUS + 2,

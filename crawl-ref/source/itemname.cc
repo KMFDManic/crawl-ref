@@ -12,6 +12,7 @@
 #include <iomanip>
 #include <sstream>
 
+#include "areas.h"
 #include "artefact.h"
 #include "art-enum.h"
 #include "butcher.h"
@@ -20,6 +21,7 @@
 #include "decks.h"
 #include "describe.h"
 #include "english.h"
+#include "evoke.h"
 #include "food.h"
 #include "goditem.h"
 #include "invent.h"
@@ -44,8 +46,8 @@
 #include "transform.h"
 #include "unicode.h"
 #include "unwind.h"
+#include "viewgeom.h"
 
-static bool _is_random_name_space(char let);
 static bool _is_random_name_vowel(char let);
 
 static char _random_vowel(int seed);
@@ -78,13 +80,66 @@ static const char* _interesting_origin(const item_def &item)
     if (origin_is_god_gift(item))
         return "god gift";
 
-    if (item.orig_monnum == MONS_DONALD
+    if (item.orig_monnum == MONS_DONALD && get_equip_desc(item)
         && item.is_type(OBJ_ARMOUR, ARM_SHIELD))
     {
         return "Donald";
     }
 
     return nullptr;
+}
+
+/**
+ * What inscription should be used to describe the way in which this item has
+ * been seen to be tried?
+ */
+static string _tried_inscription(const item_def &item)
+{
+    const item_type_id_state_type id_type = get_ident_type(item);
+
+    if (id_type == ID_MON_TRIED_TYPE)
+        return "tried by monster";
+    if (id_type != ID_TRIED_ITEM_TYPE)
+        return "tried";     // can this happen anymore?
+    return "tried on item"; // or this
+}
+
+/**
+ * What inscription should be appended to the given item's name?
+ */
+static string _item_inscription(const item_def &item, bool ident, bool equipped)
+{
+    vector<string> insparts;
+
+    if (!ident && !equipped && item_type_tried(item))
+        insparts.push_back(_tried_inscription(item));
+
+    if (const char *orig = _interesting_origin(item))
+    {
+        if (Options.show_god_gift == MB_TRUE
+            || Options.show_god_gift == MB_MAYBE && !fully_identified(item))
+        {
+            insparts.push_back(orig);
+        }
+    }
+
+    if (is_artefact(item))
+    {
+        const string part = artefact_inscription(item);
+        if (!part.empty())
+            insparts.push_back(part);
+    }
+
+    if (!item.inscription.empty())
+        insparts.push_back(item.inscription);
+
+    if (insparts.empty())
+        return "";
+
+    return make_stringf(" {%s}",
+                        comma_separated_line(begin(insparts),
+                                             end(insparts),
+                                             ", ").c_str());
 }
 
 string item_def::name(description_level_type descrip, bool terse, bool ident,
@@ -270,76 +325,8 @@ string item_def::name(description_level_type descrip, bool terse, bool ident,
     }
 
     if (descrip != DESC_BASENAME && descrip != DESC_DBNAME && with_inscription)
-    {
-        const bool  tried  =  !ident && !equipped && item_type_tried(*this);
-        string tried_str;
+        buff << _item_inscription(*this, ident, equipped);
 
-        if (tried)
-        {
-            item_type_id_state_type id_type = get_ident_type(*this);
-
-            if (id_type == ID_MON_TRIED_TYPE)
-                tried_str = "tried by monster";
-            else if (id_type == ID_TRIED_ITEM_TYPE)
-            {
-                tried_str = "tried on item";
-                if (base_type == OBJ_SCROLLS)
-                {
-                    if (sub_type == SCR_IDENTIFY
-                        && you.type_id_props.exists("SCR_ID"))
-                    {
-                        tried_str = "tried on " +
-                                    you.type_id_props["SCR_ID"].get_string();
-                    }
-                    else if (sub_type == SCR_RECHARGING
-                             && you.type_id_props.exists("SCR_RC"))
-                    {
-                        tried_str = "tried on " +
-                                    you.type_id_props["SCR_RC"].get_string();
-                    }
-                    else if (sub_type == SCR_ENCHANT_ARMOUR
-                             && you.type_id_props.exists("SCR_EA"))
-                    {
-                        tried_str = "tried on " +
-                                    you.type_id_props["SCR_EA"].get_string();
-                    }
-                }
-            }
-            else
-                tried_str = "tried";
-        }
-
-        vector<string> insparts;
-
-        if (tried)
-            insparts.push_back(tried_str);
-
-        if (const char *orig = _interesting_origin(*this))
-        {
-            if (Options.show_god_gift == MB_TRUE
-                || Options.show_god_gift == MB_MAYBE && !fully_identified(*this))
-            {
-                insparts.push_back(orig);
-            }
-        }
-
-        if (is_artefact(*this))
-        {
-            string part = artefact_inscription(*this);
-            if (!part.empty())
-                insparts.push_back(part);
-        }
-
-        if (with_inscription && !(inscription.empty()))
-            insparts.push_back(inscription);
-
-        if (!insparts.empty())
-        {
-            buff << " {"
-                 << comma_separated_line(begin(insparts), end(insparts), ", ")
-                 << "}";
-        }
-    }
     // These didn't have "cursed " prepended; add them here so that
     // it comes after the inscription.
     if (terse && descrip != DESC_DBNAME && descrip != DESC_BASENAME
@@ -935,28 +922,17 @@ const char* deck_rarity_name(deck_rarity_type rarity)
     }
 }
 
-static const char* misc_type_name(int type, bool known)
+static string misc_type_name(int type, bool known)
 {
-    if (!known)
+    if (is_deck_type(type, true))
     {
-        if (type >= MISC_FIRST_DECK && type <= MISC_LAST_DECK)
+        if (!known)
             return "deck of cards";
+        return deck_name(type);
     }
 
     switch (static_cast<misc_item_type>(type))
     {
-    case MISC_DECK_OF_ESCAPE:      return "deck of escape";
-    case MISC_DECK_OF_DESTRUCTION: return "deck of destruction";
-#if TAG_MAJOR_VERSION == 34
-    case MISC_DECK_OF_DUNGEONS:    return "deck of dungeons";
-#endif
-    case MISC_DECK_OF_SUMMONING:   return "deck of summonings";
-    case MISC_DECK_OF_WONDERS:     return "deck of wonders";
-    case MISC_DECK_OF_PUNISHMENT:  return "deck of punishment";
-    case MISC_DECK_OF_WAR:         return "deck of war";
-    case MISC_DECK_OF_CHANGES:     return "deck of changes";
-    case MISC_DECK_OF_DEFENCE:     return "deck of defence";
-
     case MISC_CRYSTAL_BALL_OF_ENERGY:    return "crystal ball of energy";
     case MISC_BOX_OF_BEASTS:             return "box of beasts";
 #if TAG_MAJOR_VERSION == 34
@@ -982,23 +958,30 @@ static const char* misc_type_name(int type, bool known)
     }
 }
 
+static bool _book_visually_special(uint32_t s)
+{
+    return s & 128; // one in ten books; c.f. item_colour()
+}
+
 static const char* book_secondary_string(uint32_t s)
 {
-    // larger than NDSC_BOOK_SEC?
+    if (!_book_visually_special(s))
+        return "";
+
     static const char* const secondary_strings[] = {
         "", "chunky ", "thick ", "thin ", "wide ", "glowing ",
         "dog-eared ", "oblong ", "runed ", "", "", ""
     };
-    return secondary_strings[s % ARRAYSZ(secondary_strings)];
+    return secondary_strings[(s / NDSC_BOOK_PRI) % ARRAYSZ(secondary_strings)];
 }
 
 static const char* book_primary_string(uint32_t p)
 {
-    // smaller than NDSC_BOOK_PRI??
     static const char* const primary_strings[] = {
-        "paperback ", "hardcover ", "leatherbound ", "metal-bound ",
-        "papyrus ", "", ""
+        "paperback", "hardcover", "leatherbound", "metal-bound", "papyrus",
     };
+    COMPILE_CHECK(NDSC_BOOK_PRI == ARRAYSZ(primary_strings));
+
     return primary_strings[p % ARRAYSZ(primary_strings)];
 }
 
@@ -1175,8 +1158,10 @@ string sub_type_string(const item_def &item, bool known)
             return "Necronomicon";
         else if (sub_type == BOOK_GRAND_GRIMOIRE)
             return "Grand Grimoire";
-        else if (sub_type == BOOK_DESTRUCTION)
-            return "tome of Destruction";
+#if TAG_MAJOR_VERSION == 34
+        else if (sub_type == BOOK_BUGGY_DESTRUCTION)
+            return "tome of obsoleteness";
+#endif
         else if (sub_type == BOOK_YOUNG_POISONERS)
             return "Young Poisoner's Handbook";
         else if (sub_type == BOOK_FEN)
@@ -1255,6 +1240,69 @@ string ego_type_string(const item_def &item, bool terse, int override_brand)
 }
 
 /**
+ * When naming the given item, should the base name be used?
+ */
+static bool _use_basename(const item_def &item, description_level_type desc,
+                          bool ident)
+{
+    const bool know_type = ident || item_type_known(item);
+    return desc == DESC_BASENAME
+           || desc == DESC_DBNAME && !know_type;
+}
+
+/**
+ * When naming the given item, should identifiable properties be mentioned?
+ */
+static bool _know_any_ident(const item_def &item, description_level_type desc,
+                            bool ident)
+{
+    return desc != DESC_QUALNAME && desc != DESC_DBNAME
+           && !_use_basename(item, desc, ident);
+}
+
+/**
+ * When naming the given item, should the specified identifiable property be
+ * mentioned?
+ */
+static bool _know_ident(const item_def &item, description_level_type desc,
+                        bool ident, iflags_t ignore_flags,
+                        item_status_flag_type vprop)
+{
+    return _know_any_ident(item, desc, ident)
+            && !testbits(ignore_flags, vprop)
+            && (ident || item_ident(item, vprop));
+}
+
+/**
+ * When naming the given item, should the curse be mentioned?
+ */
+static bool _know_curse(const item_def &item, description_level_type desc,
+                        bool ident, iflags_t ignore_flags)
+{
+    return _know_ident(item, desc, ident, ignore_flags, ISFLAG_KNOW_CURSE);
+}
+
+/**
+ * When naming the given item, should the pluses be mentioned?
+ */
+static bool _know_pluses(const item_def &item, description_level_type desc,
+                          bool ident, iflags_t ignore_flags)
+{
+    return _know_ident(item, desc, ident, ignore_flags, ISFLAG_KNOW_PLUSES);
+}
+
+/**
+ * When naming the given item, should the brand be mentioned?
+ */
+static bool _know_ego(const item_def &item, description_level_type desc,
+                         bool ident, iflags_t ignore_flags)
+{
+    return _know_any_ident(item, desc, ident)
+           && !testbits(ignore_flags, ISFLAG_KNOW_TYPE)
+           && (ident || item_type_known(item));
+}
+
+/**
  * Construct the name of a given deck item.
  *
  * @param[in] deck      The deck item in question.
@@ -1269,8 +1317,7 @@ static void _name_deck(const item_def &deck, description_level_type desc,
     const bool know_type = ident || item_type_known(deck);
 
     const bool dbname   = desc == DESC_DBNAME;
-    const bool basename = desc == DESC_BASENAME
-                          || dbname && !know_type;
+    const bool basename = _use_basename(deck, desc, ident);
 
     if (basename)
     {
@@ -1318,6 +1365,213 @@ static void _name_deck(const item_def &deck, description_level_type desc,
     buff << "}";
 }
 
+/**
+ * The curse-describing prefix to a weapon's name, including trailing space if
+ * appropriate. (Empty if the weapon isn't cursed, or if the curse shouldn't be
+ * prefixed.)
+ */
+static string _curse_prefix(const item_def &weap, description_level_type desc,
+                            bool terse, bool ident, iflags_t ignore_flags)
+{
+    if (!_know_curse(weap, desc, ident, ignore_flags) || terse)
+        return "";
+
+    if (weap.cursed())
+        return "cursed ";
+
+    if (!Options.show_uncursed)
+        return "";
+    // We don't bother printing "uncursed" if the item is identified
+    // for pluses (its state should be obvious), this is so that
+    // the weapon name is kept short (there isn't a lot of room
+    // for the name on the main screen).  If you're going to change
+    // this behaviour, *please* make it so that there is an option
+    // that maintains this behaviour. -- bwr
+    if (_know_pluses(weap, desc, ident, ignore_flags))
+        return "";
+    // Nor for artefacts. Again, the state should be obvious. --jpeg
+    if (!ident && !item_type_known(weap)
+        || !is_artefact(weap))
+    {
+        return "uncursed ";
+    }
+    return "";
+}
+
+/**
+ * The plus-describing prefix to a weapon's name, including trailing space.
+ */
+static string _plus_prefix(const item_def &weap)
+{
+    if (is_unrandom_artefact(weap, UNRAND_WOE))
+        return "+∞ ";
+    return make_stringf("%+d ", weap.plus);
+}
+
+/**
+ * Cosmetic text for weapons (e.g. glowing, runed). Includes trailing space,
+ * if appropriate. (Empty if there is no cosmetic property, or if it's
+ * marked to be ignored.)
+ */
+static string _cosmetic_text(const item_def &weap, iflags_t ignore_flags)
+{
+    const iflags_t desc = get_equip_desc(weap);
+    if (testbits(ignore_flags, desc))
+        return "";
+
+    switch (desc)
+    {
+        case ISFLAG_RUNED:
+            return "runed ";
+        case ISFLAG_GLOWING:
+            return "glowing ";
+        default:
+            return "";
+    }
+}
+
+/**
+ * The ego-describing prefix to a weapon's name, including trailing space if
+ * appropriate. (Empty if the weapon's brand shouldn't be prefixed.)
+ */
+static string _ego_prefix(const item_def &weap, description_level_type desc,
+                          bool terse, bool ident, iflags_t ignore_flags)
+{
+    if (!_know_ego(weap, desc, ident, ignore_flags) || terse)
+        return "";
+
+    switch (get_weapon_brand(weap))
+    {
+        case SPWPN_VAMPIRISM:
+            return "vampiric ";
+        case SPWPN_ANTIMAGIC:
+            return "antimagic ";
+        case SPWPN_NORMAL:
+            if (!_know_pluses(weap, desc, ident, ignore_flags)
+                && get_equip_desc(weap))
+            {
+                return "enchanted ";
+            }
+            // fallthrough to default
+        default:
+            return "";
+    }
+}
+
+/**
+ * The ego-describing suffix to a weapon's name, May be empty. Does not include
+ * trailing space.
+ */
+static string _ego_suffix(const item_def &weap, bool terse)
+{
+    const string brand_name = weapon_brand_name(weap, terse);
+    if (brand_name.empty())
+        return "";
+
+    if (terse)
+        return make_stringf(" (%s)", brand_name.c_str());
+    return " of " + brand_name;
+}
+
+/**
+ * Build the appropriate name for a given weapon.
+ *
+ * @param weap          The weapon in question.
+ * @param desc          The type of name to provide. (E.g. the name to be used
+ *                      in database lookups for description, or...)
+ * @param terse         Whether to provide a terse version of the name for
+ *                      display in the HUD.
+ * @param ident         Whether the weapon should be named as if it were
+ *                      identified.
+ * @param inscr         Whether an inscription will be added later.
+ * @param ignore_flags  Identification flags on the weapon to ignore.
+ *
+ * @return              A name for the weapon.
+ *                      TODO: example
+ */
+static string _name_weapon(const item_def &weap, description_level_type desc,
+                           bool terse, bool ident, bool inscr,
+                           iflags_t ignore_flags)
+{
+    const bool dbname   = (desc == DESC_DBNAME);
+    const bool basename = _use_basename(weap, desc, ident);
+    const bool qualname = (desc == DESC_QUALNAME);
+
+    const bool know_curse =  _know_curse(weap, desc, ident, ignore_flags);
+    const bool know_pluses = _know_pluses(weap, desc, ident, ignore_flags);
+    const bool know_ego =    _know_ego(weap, desc, ident, ignore_flags);
+
+    const string curse_prefix
+        = _curse_prefix(weap, desc, terse, ident, ignore_flags);
+    const string plus_text = know_pluses ? _plus_prefix(weap) : "";
+
+    if (is_artefact(weap) && !dbname)
+    {
+        const string long_name = curse_prefix + plus_text
+                                 + get_artefact_name(weap, ident);
+
+        // crop long artefact names when not controlled by webtiles -
+        // webtiles displays weapon names across multiple lines
+#ifdef USE_TILE_WEB
+        if (!tiles.is_controlled_from_web())
+#endif
+        {
+            const bool has_inscript = desc != DESC_BASENAME
+                                   && desc != DESC_DBNAME
+                                   && inscr;
+            const string inscription = _item_inscription(weap, ident, true);
+
+            const int total_length = long_name.size()
+                                     + (has_inscript ? inscription.size() : 0);
+            const string inv_slot_text = "x) ";
+            const int max_length = crawl_view.hudsz.x - inv_slot_text.size();
+            if (terse)
+            {
+                dprf("full %s (inscr %s (%d)) (%d), ok = %d",
+                     long_name.c_str(), inscription.c_str(), has_inscript,
+                     total_length, max_length);
+            }
+            if (!terse || total_length <= max_length)
+                return long_name;
+        }
+#ifdef USE_TILE_WEB
+        else
+            return long_name;
+#endif
+
+        // special case: these two shouldn't ever have their base name revealed
+        // (since showing 'eudaemon blade' is unhelpful in the former case, and
+        // showing 'broad axe' is misleading in the latter)
+        // could be a flag, but doesn't seem worthwhile for only two items
+        if (is_unrandom_artefact(weap, UNRAND_JIHAD)
+            || is_unrandom_artefact(weap, UNRAND_DEMON_AXE))
+        {
+            return long_name;
+        }
+
+        const string short_name
+            = curse_prefix + plus_text + get_artefact_base_name(weap, true);
+        dprf("short: %s", short_name.c_str());
+        return short_name;
+    }
+
+    const bool show_cosmetic = !basename && !qualname && !dbname
+                               && !know_pluses && !know_ego
+                               && !terse
+                               && !(ignore_flags & ISFLAG_COSMETIC_MASK);
+
+    const string cosmetic_text
+        = show_cosmetic ? _cosmetic_text(weap, ignore_flags) : "";
+    const string ego_prefix
+        = _ego_prefix(weap, desc, terse, ident, ignore_flags);
+    const string ego_suffix = know_ego ? _ego_suffix(weap, terse) : "";
+    const string curse_suffix
+        = know_curse && weap.cursed() && terse ? " (curse)" :  "";
+    return curse_prefix + plus_text + cosmetic_text + ego_prefix
+           + item_base_name(weap)
+           + ego_suffix + curse_suffix;
+}
+
 // Note that "terse" is only currently used for the "in hand" listing on
 // the game screen.
 string item_def::name_aux(description_level_type desc, bool terse, bool ident,
@@ -1329,32 +1583,21 @@ string item_def::name_aux(description_level_type desc, bool terse, bool ident,
     const bool know_type = ident || item_type_known(*this);
 
     const bool dbname   = (desc == DESC_DBNAME);
-    const bool basename = (desc == DESC_BASENAME || (dbname && !know_type));
+    const bool basename = _use_basename(*this, desc, ident);
     const bool qualname = (desc == DESC_QUALNAME);
 
-    const bool know_curse =
-        !basename && !qualname && !dbname
-        && !testbits(ignore_flags, ISFLAG_KNOW_CURSE)
-        && (ident || item_ident(*this, ISFLAG_KNOW_CURSE));
-
-    const bool know_pluses =
-        !basename && !qualname && !dbname
-        && !testbits(ignore_flags, ISFLAG_KNOW_PLUSES)
-        && (ident || item_ident(*this, ISFLAG_KNOW_PLUSES));
-
-    const bool know_brand =
-        !basename && !qualname && !dbname
-        && !testbits(ignore_flags, ISFLAG_KNOW_TYPE)
-        && (ident || item_type_known(*this));
+    const bool know_curse =  _know_curse(*this, desc, ident, ignore_flags);
+    const bool know_pluses = _know_pluses(*this, desc, ident, ignore_flags);
+    const bool know_brand =  _know_ego(*this, desc, ident, ignore_flags);
 
     const bool know_ego = know_brand;
 
     // Display runed/glowing/embroidered etc?
     // Only display this if brand is unknown.
-    const bool show_cosmetic = !know_pluses && !terse && !basename
-        && !qualname && !dbname
-        && !know_brand
-        && !(ignore_flags & ISFLAG_COSMETIC_MASK);
+    const bool show_cosmetic = !know_pluses && !know_brand
+                               && !basename && !qualname && !dbname
+                               && !terse
+                               && !(ignore_flags & ISFLAG_COSMETIC_MASK);
 
     const bool need_plural = !basename && !dbname;
 
@@ -1363,83 +1606,8 @@ string item_def::name_aux(description_level_type desc, bool terse, bool ident,
     switch (base_type)
     {
     case OBJ_WEAPONS:
-        if (know_curse && !terse)
-        {
-            // We don't bother printing "uncursed" if the item is identified
-            // for pluses (its state should be obvious), this is so that
-            // the weapon name is kept short (there isn't a lot of room
-            // for the name on the main screen).  If you're going to change
-            // this behaviour, *please* make it so that there is an option
-            // that maintains this behaviour. -- bwr
-            // Nor for artefacts. Again, the state should be obvious. --jpeg
-            if (cursed())
-                buff << "cursed ";
-            else if (Options.show_uncursed && !know_pluses
-                     && (!know_type || !is_artefact(*this)))
-                buff << "uncursed ";
-        }
-
-        if (know_pluses)
-        {
-            if (is_unrandom_artefact(*this, UNRAND_WOE))
-                buff << "+∞ ";
-            else
-                buff << make_stringf("%+d ", plus);
-        }
-
-        if (is_artefact(*this) && !dbname)
-        {
-            buff << get_artefact_name(*this);
-            break;
-        }
-
-        if (show_cosmetic)
-        {
-            switch (get_equip_desc(*this))
-            {
-            case ISFLAG_RUNED:
-                if (!testbits(ignore_flags, ISFLAG_RUNED))
-                    buff << "runed ";
-                break;
-            case ISFLAG_GLOWING:
-                if (!testbits(ignore_flags, ISFLAG_GLOWING))
-                    buff << "glowing ";
-                break;
-            }
-        }
-
-        if (know_brand && !terse)
-        {
-            const int wpn_brand = get_weapon_brand(*this);
-            if (wpn_brand == SPWPN_VAMPIRISM)
-                buff << "vampiric ";
-            else if (wpn_brand == SPWPN_ANTIMAGIC)
-                buff << "antimagic ";
-            else if (wpn_brand == SPWPN_NORMAL && !know_pluses
-                     && get_equip_desc(*this))
-            {
-                buff << "enchanted ";
-            }
-        }
-        buff << item_base_name(*this);
-
-        if (know_brand)
-        {
-            const string brand_name = weapon_brand_name(*this, terse);
-            if (!brand_name.empty())
-            {
-                if (!terse)
-                    buff << " of ";
-                else
-                    buff << " (";
-                buff << brand_name;
-                if (terse)
-                    buff << ")";
-            }
-        }
-
-        if (know_curse && cursed() && terse)
-            buff << " (curse)";
+        buff << _name_weapon(*this, desc, terse, ident, with_inscription,
+                             ignore_flags);
         break;
 
     case OBJ_MISSILES:
@@ -1765,13 +1933,9 @@ string item_def::name_aux(description_level_type desc, bool terse, bool ident,
         {
             buff << " {used: " << used_count << "}";
         }
-        else if (is_xp_evoker(*this) && !evoker_is_charged(*this) && !dbname)
-        {
-            if (evoker_is_charging(*this))
-                buff << " (inert, charging)";
-            else
-                buff << " (inert)";
-        }
+        else if (is_xp_evoker(*this) && !dbname && !evoker_is_charged(*this))
+            buff << " (inert)";
+
         break;
 
     case OBJ_BOOKS:
@@ -1786,8 +1950,8 @@ string item_def::name_aux(description_level_type desc, bool terse, bool ident,
             buff << (item_typ == BOOK_MANUAL ? "manual" : "book");
         else if (!know_type)
         {
-            buff << book_secondary_string(rnd / NDSC_BOOK_PRI)
-                 << book_primary_string(rnd % NDSC_BOOK_PRI)
+            buff << book_secondary_string(rnd)
+                 << book_primary_string(rnd) << " "
                  << (item_typ == BOOK_MANUAL ? "manual" : "book");
         }
         else
@@ -1984,14 +2148,13 @@ bool item_type_known(const item_def& item)
     if (item.base_type == OBJ_MISSILES)
         return true;
 
-    if (item.base_type == OBJ_MISCELLANY
-        && (item.sub_type < MISC_FIRST_DECK || item.sub_type > MISC_LAST_DECK))
-    {
+    if (item.base_type == OBJ_MISCELLANY && !is_deck(item))
         return true;
-    }
 
-    if (item.is_type(OBJ_BOOKS, BOOK_DESTRUCTION))
+#if TAG_MAJOR_VERSION == 34
+    if (item.is_type(OBJ_BOOKS, BOOK_BUGGY_DESTRUCTION))
         return true;
+#endif
 
     if (item.is_type(OBJ_BOOKS, BOOK_MANUAL))
         return false;
@@ -2500,11 +2663,8 @@ void check_item_knowledge(bool unknown_items)
                 }
 
                 // stupid fake decks
-                if (is_deck(*ptmp)
-                    || ptmp->is_type(OBJ_MISCELLANY, NUM_MISCELLANY))
-                {
+                if (is_deck(*ptmp, true))
                     ptmp->deck_rarity = DECK_RARITY_COMMON;
-                }
 
                 items_other.push_back(ptmp);
 
@@ -2618,11 +2778,31 @@ void display_runes()
     deleteAll(items);
 }
 
-// Used for: Pandemonium demonlords, shopkeepers, scrolls, random artefacts
+#define ITEMNAME_SIZE 200
+/**
+ * Make a random name from the given seed.
+ *
+ * Used for: Pandemonium demonlords, shopkeepers, scrolls, random artefacts.
+ *
+ * This function is insane, but that might be useful.
+ *
+ * @param seed      The seed to generate the name from.
+ *                  The same seed will always generate the same name.
+ *
+ * @param all_cap   Whether the name should be in allcaps (i.e. whether it's
+ *                  a scroll name). Also increases expected length by 6.
+ * @param maxlen    The maximum expected length for the name. Actual name may
+ *                  exceed this length by up to 50%.
+ *                  If -1, max is ITEMNAME_SIZE.
+ * @param start     A leading character for the name. If 0, is ignored.
+ *                  Does not increase the length of the name (and, in fact,
+ *                  slightly decreases it on average).
+ */
 string make_name(uint32_t seed, bool all_cap, int maxlen, char start)
 {
     char name[ITEMNAME_SIZE];
-    int  numb[17]; // contains the random seeds used for the name
+    static const int NUM_SEEDS = 17;
+    int  numb[NUM_SEEDS]; // contains the random seeds used for the name
 
     int i = 0;
     bool want_vowel = false; // Keep track of whether we want a vowel next.
@@ -2664,13 +2844,13 @@ string make_name(uint32_t seed, bool all_cap, int maxlen, char start)
 
     ASSERT_RANGE(len, 1, ITEMNAME_SIZE + 1);
 
-    int j = numb[3] % 17;
-    const int k = numb[4] % 17;
+    int j = numb[3] % NUM_SEEDS;
+    const int k = numb[4] % NUM_SEEDS;
 
     int count = 0;
     for (i = 0; i < len; ++i)
     {
-        j = (j + 1) % 17;
+        j = (j + 1) % NUM_SEEDS;
         if (j == 0)
         {
             count++;
@@ -2685,7 +2865,7 @@ string make_name(uint32_t seed, bool all_cap, int maxlen, char start)
             want_vowel = _is_random_name_vowel(start);
         }
         else if (!has_space && i > 5 && i < len - 4
-                 && (numb[(k + 10 * j) % 17] % 5) != 3) // 4/5 chance of a space
+                 && (numb[(k + 10 * j) % NUM_SEEDS] % 5) != 3) // 4/5 chance of a space
         {
             // Hand out a space.
             want_vowel = true;
@@ -2696,23 +2876,23 @@ string make_name(uint32_t seed, bool all_cap, int maxlen, char start)
                      || (i > 1
                          && _is_random_name_vowel(name[i - 1])
                          && !_is_random_name_vowel(name[i - 2])
-                         && (numb[(k + 4 * j) % 17] % 5) <= 1))) // 2/5 chance
+                         && (numb[(k + 4 * j) % NUM_SEEDS] % 5) <= 1))) // 2/5 chance
         {
             // Place a vowel.
             want_vowel = true;
-            name[i] = _random_vowel(numb[(k + 7 * j) % 17]);
+            name[i] = _random_vowel(numb[(k + 7 * j) % NUM_SEEDS]);
 
-            if (_is_random_name_space(name[i]))
+            if (name[i] == ' ')
             {
                 if (i == 0) // Shouldn't happen.
                 {
                     want_vowel = false;
-                    name[i]    = _random_cons(numb[(k + 14 * j) % 17]);
+                    name[i]    = _random_cons(numb[(k + 14 * j) % NUM_SEEDS]);
                 }
                 else if (len < 7
                          || i <= 2 || i >= len - 3
-                         || _is_random_name_space(name[i - 1])
-                         || (i > 1 && _is_random_name_space(name[i - 2]))
+                         || name[i - 1] == ' '
+                         || (i > 1 && name[i - 2] == ' ')
                          || i > 2
                             && !_is_random_name_vowel(name[i - 1])
                             && !_is_random_name_vowel(name[i - 2]))
@@ -2729,7 +2909,7 @@ string make_name(uint32_t seed, bool all_cap, int maxlen, char start)
             else if (i > 1
                      && name[i] == name[i - 1]
                      && (name[i] == 'y' || name[i] == 'i'
-                         || (numb[(k + 12 * j) % 17] % 5) <= 1))
+                         || (numb[(k + 12 * j) % NUM_SEEDS] % 5) <= 1))
             {
                 // Replace the vowel with something else if the previous
                 // letter was the same, and it's a 'y', 'i' or with 2/5 chance.
@@ -2741,12 +2921,12 @@ string make_name(uint32_t seed, bool all_cap, int maxlen, char start)
         {
             // Use one of number of predefined letter combinations.
             if ((len > 3 || i != 0)
-                && (numb[(k + 13 * j) % 17] % 7) <= 1 // 2/7 chance
+                && (numb[(k + 13 * j) % NUM_SEEDS] % 7) <= 1 // 2/7 chance
                 && (i < len - 2
-                    || i > 0 && !_is_random_name_space(name[i - 1])))
+                    || i > 0 && name[i - 1] != ' '))
             {
                 // Are we at start or end of the (sub) name?
-                const bool beg = (i < 1 || _is_random_name_space(name[i - 1]));
+                const bool beg = (i < 1 || name[i - 1] == ' ');
                 const bool end = (i >= len - 2);
 
                 const int first = (beg ?  0 : (end ? 14 :  0));
@@ -2761,7 +2941,7 @@ string make_name(uint32_t seed, bool all_cap, int maxlen, char start)
                 //   middle -> [0,67]
                 //   end    -> [14,56]
 
-                switch (numb[(k + 11 * j) % 17] % num + first)
+                switch (numb[(k + 11 * j) % NUM_SEEDS] % num + first)
                 {
                 // start, middle
                 case  0: strcat(name, "kl"); break;
@@ -2844,13 +3024,13 @@ string make_name(uint32_t seed, bool all_cap, int maxlen, char start)
                 if (i == 0)
                 {
                     // Start with any letter.
-                    name[i] = 'a' + (numb[(k + 8 * j) % 17] % 26);
+                    name[i] = 'a' + (numb[(k + 8 * j) % NUM_SEEDS] % 26);
                     want_vowel = _is_random_name_vowel(name[i]);
                 }
                 else
                 {
                     // Pick a random consonant.
-                    name[i] = _random_cons(numb[(k + 3 * j) % 17]);
+                    name[i] = _random_cons(numb[(k + 3 * j) % NUM_SEEDS]);
                 }
             }
         }
@@ -2870,7 +3050,7 @@ string make_name(uint32_t seed, bool all_cap, int maxlen, char start)
             continue;
         }
 
-        if (_is_random_name_space(name[i]))
+        if (name[i] == ' ')
             has_space = true;
 
         // If we just got a vowel, we want a consonant next, and vice versa.
@@ -2879,7 +3059,7 @@ string make_name(uint32_t seed, bool all_cap, int maxlen, char start)
 
     // Catch break and try to give a final letter.
     if (i > 0
-        && !_is_random_name_space(name[i - 1])
+        && name[i - 1] != ' '
         && name[i - 1] != 'y'
         && _is_random_name_vowel(name[i - 1])
         && (count > 9 || (i < 8 && numb[16] % 3)))
@@ -2917,11 +3097,7 @@ string make_name(uint32_t seed, bool all_cap, int maxlen, char start)
 
     return name;
 }
-
-static bool _is_random_name_space(char let)
-{
-    return let == ' ';
-}
+#undef ITEMNAME_SIZE
 
 // Returns true for vowels, 'y' or space.
 static bool _is_random_name_vowel(char let)
@@ -3182,15 +3358,12 @@ bool is_dangerous_item(const item_def &item, bool temp)
         {
         case POT_MUTATION:
         case POT_LIGNIFY:
-        case POT_AMBROSIA:
             return true;
+        case POT_AMBROSIA:
+            return you.species != SP_DEEP_DWARF; // VERY good for dd
         default:
             return false;
         }
-
-    case OBJ_BOOKS:
-        // The Tome of Destruction is certainly risky.
-        return item.sub_type == BOOK_DESTRUCTION;
 
     default:
         return false;
@@ -3298,6 +3471,9 @@ bool is_useless_item(const item_def &item, bool temp)
         if (you.species == SP_LAVA_ORC && temperature_effect(LORC_NO_SCROLLS))
             return true;
 #endif
+
+        if (temp && silenced(you.pos()))
+            return true; // can't use scrolls while silenced
 
         if (!item_type_known(item))
             return false;
@@ -3621,7 +3797,7 @@ bool is_useless_item(const item_def &item, bool temp)
         }
 
     case OBJ_BOOKS:
-        if (item.sub_type != BOOK_MANUAL || !item_type_known(item))
+        if (!item_type_known(item) || item.sub_type != BOOK_MANUAL)
             return false;
         if (you.skills[item.plus] >= 27)
             return true;
@@ -3738,12 +3914,8 @@ string item_prefix(const item_def &item, bool temp)
         break;
 
     case OBJ_BOOKS:
-        if (item.sub_type != BOOK_MANUAL
-            && item.sub_type != BOOK_DESTRUCTION
-            && item.sub_type != NUM_BOOKS)
-        {
+        if (item.sub_type != BOOK_MANUAL && item.sub_type != NUM_BOOKS)
             prefixes.push_back("spellbook");
-        }
         break;
 
     case OBJ_GOLD:

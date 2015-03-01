@@ -14,10 +14,10 @@
 #include "cloud.h"
 #include "colour.h"
 #include "directn.h"
-#include "effects.h"
 #include "english.h"
 #include "env.h"
 #include "food.h"
+#include "item_use.h"
 #include "itemprop.h"
 #include "mapmark.h"
 #include "message.h"
@@ -58,16 +58,12 @@ MiscastEffect::MiscastEffect(actor* _target, actor* _act_source,
     target(_target), act_source(_act_source),
     special_source(_source), cause(_cause), spell(_spell),
     school(SPTYP_NONE), pow(_pow), fail(_fail), level(-1),
-    kt(KILL_NONE), nothing_happens_when(_nothing_happens),
+    nothing_happens_when(_nothing_happens),
     lethality_margin(_lethality_margin), hand_str(_hand_str),
     can_plural_hand(_can_plural)
 {
     ASSERT(is_valid_spell(_spell));
-    unsigned int schools = get_spell_disciplines(_spell);
-    ASSERT(schools != SPTYP_NONE);
-#ifndef ASSERTS
-    UNUSED(schools);
-#endif
+    ASSERT(get_spell_disciplines(_spell) != SPTYP_NONE);
 
     init();
     do_miscast();
@@ -82,7 +78,7 @@ MiscastEffect::MiscastEffect(actor* _target, actor* _act_source, int _source,
     target(_target), act_source(_act_source),
     special_source(_source), cause(_cause),
     spell(SPELL_NO_SPELL), school(_school), pow(-1), fail(-1), level(_level),
-    kt(KILL_NONE), nothing_happens_when(_nothing_happens),
+    nothing_happens_when(_nothing_happens),
     lethality_margin(_lethality_margin), hand_str(_hand_str),
     can_plural_hand(_can_plural)
 {
@@ -104,7 +100,7 @@ MiscastEffect::MiscastEffect(actor* _target, actor* _act_source, int _source,
     target(_target), act_source(_act_source),
     special_source(_source), cause(_cause),
     spell(SPELL_NO_SPELL), school(_school), pow(_pow), fail(_fail), level(-1),
-    kt(KILL_NONE), nothing_happens_when(_nothing_happens),
+    nothing_happens_when(_nothing_happens),
     lethality_margin(_lethality_margin), hand_str(_hand_str),
     can_plural_hand(_can_plural)
 {
@@ -250,11 +246,11 @@ void MiscastEffect::do_miscast()
     {
         vector<int> school_list;
         for (int i = 0; i <= SPTYP_LAST_EXPONENT; i++)
-            if (spell_typematch(spell, 1 << i))
+            if (spell_typematch(spell, spschools_type::exponent(i)))
                 school_list.push_back(i);
 
         unsigned int _school = school_list[random2(school_list.size())];
-        sp_type = static_cast<spschool_flag_type>(1 << _school);
+        sp_type = spschools_type::exponent(_school);
     }
     else
     {
@@ -1093,10 +1089,12 @@ void MiscastEffect::_charms(int severity)
                 return;
             }
             else if (target->is_player())
+            {
                 if (you.species == SP_OCTOPODE)
                     you_msg = "Your beak vibrates slightly."; // the only hard part
                 else
                     you_msg = "Your skull vibrates slightly.";
+            }
             break;
         }
         do_msg();

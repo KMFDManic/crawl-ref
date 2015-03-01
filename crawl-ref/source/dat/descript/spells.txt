@@ -71,7 +71,7 @@ interlopers, dragging them towards nearby trees.
 %%%%
 Banishment spell
 
-<Banish ability>
+Attempt to banish a creature into the Abyss.
 %%%%
 Battlecry spell
 
@@ -397,8 +397,8 @@ into a state of unliving slavery as spectral things.
 %%%%
 Death Rattle spell
 
-This spell is an exhaling of the essence of the dying, a foul scattered mix
-of miasma and negative energy clouds.
+This spell exhales the essence of the dying, creating clouds of negative
+energy.
 %%%%
 Death's Door spell
 
@@ -589,13 +589,6 @@ Force Lance spell
 This spell fires a shaft of concussive force which can send its target hurtling
 backwards if the impact is not nullified by their defenses.
 %%%%
-Forceful Dismissal spell
-
-This spell violently unbinds the magic which keeps the caster's summoned
-creatures in this world, engulfing anything near them in a maelstrom of magical
-force. The more powerful the creature released, the stronger the resulting
-backlash will be.
-%%%%
 Forceful Invitation spell
 
 This ability summons some of the lesser threats from one of the Lair of Beasts,
@@ -725,9 +718,8 @@ many heads strike in all directions. Edible foes slain by the gnashing teeth
 are instantly devoured, reinvigorating the caster in their reptilian rampage.
 
 Like real hydras, the caster will sprout new heads when decapitated, unless the
-wound is cauterized by flame. However, because of a flaw in the spell, growing
-new heads does not provide healing as it does for real hydras. If all of the
-caster's heads are lopped off, the form will end.
+wound is cauterized by flame. If all of the caster's heads are lopped off, the
+form will end.
 %%%%
 Ice Form spell
 
@@ -966,9 +958,9 @@ onto their targets, yet because of their huge inertia, especially agile
 opponents may be able to outmanoeuvre them. The orbs need some time to
 stabilize, and a nascent orb won't do the full damage it is capable of.
 
-It is said that most copies of this spell suffer from a scribal error that
-makes the orbs unstable beyond a short range. Certain individuals may have
-access to spellbooks without this flaw, so beware!
+Those who have trained for years, or who have an innate ability, can maintain
+the orb out of their own line of sight. Adventurers, sadly, do not have the
+time to master this aspect of the spell.
 %%%%
 Orb of Electricity spell
 
@@ -1020,8 +1012,7 @@ Petrify spell
 
 This spell attempts to petrify a monster. If successful, the monster is slowed
 down for a while until it is temporarily turned into stone. In this state, a
-monster will take less damage upon being hit. It also precludes the use of
-wings, which can be quite unhealthy above lava.
+monster will take less damage upon being hit.
 %%%%
 Petrifying Cloud spell
 
@@ -1155,7 +1146,7 @@ Breathes a blast of flame that leaves a cloud of fire where it ends up.
 Sentinel's Mark spell
 
 This spell bestows a strong beacon upon an enemy. It announces the presence and
-location of the marked person to everyone on the same same dungeon level.
+location of the marked person to everyone on the same dungeon level.
 %%%%
 Shadow Bolt spell
 
@@ -1163,10 +1154,8 @@ A penetrating bolt spell mimicked by the shadow of a Dithmenos worshipper.
 %%%%
 Shadow Creatures spell
 
-This spell weaves a creature from shadows and threads of Abyssal matter. The
-creature thus brought into existence will recreate some type of creature native
-to the caster's location. The spell even creates appropriate equipment for the
-creature from the same ethereal matter.
+This spell creates replicas of creatures native to the caster's current
+location, weaving them from shadows and threads of Abyssal matter.
 %%%%
 Shadow Shard spell
 

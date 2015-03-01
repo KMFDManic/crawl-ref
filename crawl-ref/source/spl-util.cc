@@ -160,7 +160,7 @@ spschool_flag_type school_by_name(string name)
 
     for (int i = 0; i <= SPTYP_RANDOM; i++)
     {
-        spschool_flag_type type = (spschool_flag_type) (1 << i);
+        const auto type = spschools_type::exponent(i);
 
         string short_name = spelltype_short_name(type);
         string long_name  = spelltype_long_name(type);
@@ -435,9 +435,9 @@ const char *get_spell_target_prompt(spell_type which_spell)
     return _seekspell(which_spell)->target_prompt;
 }
 
-bool spell_typematch(spell_type which_spell, unsigned int which_discipline)
+bool spell_typematch(spell_type which_spell, spschool_flag_type which_disc)
 {
-    return get_spell_disciplines(which_spell) & which_discipline;
+    return bool(get_spell_disciplines(which_spell) & which_disc);
 }
 
 //jmf: next two for simple bit handling
@@ -446,12 +446,12 @@ spschools_type get_spell_disciplines(spell_type spell)
     return _seekspell(spell)->disciplines;
 }
 
-int count_bits(unsigned int bits)
+int count_bits(uint64_t bits)
 {
-    unsigned int n;
+    uint64_t n;
     int c = 0;
 
-    for (n = 1; n < INT_MAX; n <<= 1)
+    for (n = 1; n; n <<= 1)
         if (n & bits)
             c++;
 
@@ -736,7 +736,7 @@ bool spell_direction(dist &spelld, bolt &pbolt,
     return true;
 }
 
-const char* spelltype_short_name(int which_spelltype)
+const char* spelltype_short_name(spschool_flag_type which_spelltype)
 {
     switch (which_spelltype)
     {
@@ -773,7 +773,7 @@ const char* spelltype_short_name(int which_spelltype)
     }
 }
 
-const char* spelltype_long_name(int which_spelltype)
+const char* spelltype_long_name(spschool_flag_type which_spelltype)
 {
     switch (which_spelltype)
     {
@@ -810,7 +810,7 @@ const char* spelltype_long_name(int which_spelltype)
     }
 }
 
-skill_type spell_type2skill(unsigned int spelltype)
+skill_type spell_type2skill(spschool_flag_type spelltype)
 {
     switch (spelltype)
     {
@@ -996,56 +996,6 @@ int spell_effect_noise(spell_type spell)
         return explosion_noise(expl_size);
 
     return _seekspell(spell)->effect_noise;
-}
-
-spell_type zap_type_to_spell(zap_type zap)
-{
-    switch (zap)
-    {
-    case ZAP_THROW_FLAME:
-        return SPELL_THROW_FLAME;
-    case ZAP_THROW_FROST:
-        return SPELL_THROW_FROST;
-    case ZAP_SLOW:
-        return SPELL_SLOW;
-    case ZAP_HASTE:
-        return SPELL_HASTE;
-    case ZAP_MAGIC_DART:
-        return SPELL_MAGIC_DART;
-    case ZAP_MAJOR_HEALING:
-        return SPELL_MAJOR_HEALING;
-    case ZAP_PARALYSE:
-        return SPELL_PARALYSE;
-    case ZAP_BOLT_OF_FIRE:
-        return SPELL_BOLT_OF_FIRE;
-    case ZAP_BOLT_OF_COLD:
-        return SPELL_BOLT_OF_COLD;
-    case ZAP_PRIMAL_WAVE:
-        return SPELL_PRIMAL_WAVE;
-    case ZAP_CONFUSE:
-        return SPELL_CONFUSE;
-    case ZAP_INVISIBILITY:
-        return SPELL_INVISIBILITY;
-    case ZAP_DIG:
-        return SPELL_DIG;
-    case ZAP_FIREBALL:
-        return SPELL_FIREBALL;
-    case ZAP_TELEPORT_OTHER:
-        return SPELL_TELEPORT_OTHER;
-    case ZAP_LIGHTNING_BOLT:
-        return SPELL_LIGHTNING_BOLT;
-    case ZAP_POLYMORPH:
-        return SPELL_POLYMORPH;
-    case ZAP_BOLT_OF_DRAINING:
-        return SPELL_BOLT_OF_DRAINING;
-    case ZAP_ENSLAVEMENT:
-        return SPELL_ENSLAVEMENT;
-    case ZAP_DISINTEGRATE:
-        return SPELL_DISINTEGRATE;
-    default:
-        die("zap_type_to_spell() only handles wand zaps for now");
-    }
-    return SPELL_NO_SPELL;
 }
 
 static bool _spell_is_empowered(spell_type spell)
@@ -1244,6 +1194,11 @@ string spell_uselessness_reason(spell_type spell, bool temp, bool prevent,
         }
         break;
 
+    case SPELL_STATUE_FORM:
+        if (SP_GARGOYLE == you.species)
+            return "You're already functionally a statue.";
+        // fallthrough to other forms
+
     case SPELL_STONESKIN:
     case SPELL_BEASTLY_APPENDAGE:
     case SPELL_BLADE_HANDS:
@@ -1251,7 +1206,6 @@ string spell_uselessness_reason(spell_type spell, bool temp, bool prevent,
     case SPELL_HYDRA_FORM:
     case SPELL_ICE_FORM:
     case SPELL_SPIDER_FORM:
-    case SPELL_STATUE_FORM:
         if (you.undead_state(temp) == US_UNDEAD
             || you.undead_state(temp) == US_HUNGRY_DEAD)
         {
@@ -1472,9 +1426,7 @@ bool spell_no_hostile_in_range(spell_type spell, bool rod)
     beam.origin_spell = spell;
 
     zap_type zap = spell_to_zap(spell);
-    if (spell == SPELL_FIREBALL)
-        zap = ZAP_FIREBALL;
-    else if (spell == SPELL_RANDOM_BOLT) // don't let it think that there are no susceptible monsters in range
+    if (spell == SPELL_RANDOM_BOLT) // don't let it think that there are no susceptible monsters in range
         zap = ZAP_DEBUGGING_RAY;
 
     if (zap != NUM_ZAPS)
@@ -1558,7 +1510,7 @@ static const mutation_type arcana_sacrifice_map[] = {
  * @param schools   A bitfield containing a union of spschool_flag_types.
  * @return          Whether the player is unable use any of the given schools.
  */
-bool cannot_use_schools(unsigned int schools)
+bool cannot_use_schools(spschools_type schools)
 {
     COMPILE_CHECK(ARRAYSZ(arcana_sacrifice_map) == SPTYP_LAST_EXPONENT + 1);
 
@@ -1566,7 +1518,7 @@ bool cannot_use_schools(unsigned int schools)
     for (int i = 0; i <= SPTYP_LAST_EXPONENT; i++)
     {
         // skip schools not in the provided set
-        const int school = 1<<i;
+        const auto school = spschools_type::exponent(i);
         if (!(schools & school))
             continue;
 
@@ -1589,8 +1541,8 @@ bool cannot_use_schools(unsigned int schools)
  */
 skill_type arcane_mutation_to_skill(mutation_type mutation)
 {
-    for (int sptyp_exp = 0; sptyp_exp <= SPTYP_LAST_EXPONENT; sptyp_exp++)
-        if (arcana_sacrifice_map[sptyp_exp] == mutation)
-            return spell_type2skill(1 << sptyp_exp);
+    for (int exp = 0; exp <= SPTYP_LAST_EXPONENT; exp++)
+        if (arcana_sacrifice_map[exp] == mutation)
+            return spell_type2skill(spschools_type::exponent(exp));
     return SK_NONE;
 }

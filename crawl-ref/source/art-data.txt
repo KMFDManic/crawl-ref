@@ -139,7 +139,7 @@
 # MAGIC:    Magic resistance/vulnerability.
 # MP:       Mana capacity modifier.
 # NAME:     Name of artefact when identified.
-# REGEN:    Provides regeneration (40 = amulet of regen, 100 = the spell).
+# REGEN:    Provides regeneration (1 = amulet of regen, 2.5 = the spell).
 # STEALTH:  Stealth modifier.
 # STR:      Strength modifier.
 # TILE:     The file containing the artefact's tile, with file type png.
@@ -218,6 +218,7 @@ VALUE:   1000
 BOOL:    poison, no_upgrade
 
 NAME:    Staff of Wucad Mu
+INSCRIP: channel
 OBJ:     OBJ_WEAPONS/WPN_STAFF
 PLUS:    +9
 COLOUR:  ETC_MAGIC
@@ -478,13 +479,14 @@ BOOL:    elec, seeinv, notelep
 # called botono.
 NAME:     spear of the Botono
 OBJ:      OBJ_WEAPONS/WPN_SPEAR
+INSCRIP:  Hex
 PLUS:     +6
 COLOUR:   ETC_UNHOLY
 TILE:     urand_botono
 TILE_EQ:  botono
 BRAND:    SPWPN_REAPING
 HP:       -6
-BOOL:     poison, life
+BOOL:     poison, life, nogen
 
 NAME:     trident of the Octopus King
 OBJ:      OBJ_WEAPONS/WPN_TRIDENT
@@ -520,6 +522,7 @@ BOOL:     elec
 
 NAME:     heavy crossbow "Sniper"
 OBJ:      OBJ_WEAPONS/WPN_TRIPLE_CROSSBOW
+TYPE:     heavy crossbow
 PLUS:     +15
 COLOUR:   ETC_DARK
 TILE:     urand_sniper
@@ -537,8 +540,10 @@ TILE_EQ: great_bow
 BRAND:   SPWPN_PENETRATION
 EV:      -2
 
+# TAG_MAJOR_VERSION == 34
 ENUM:    BLOWGUN_ASSASSIN
 NAME:    blowgun of the Assassin
+INSCRIP: stab,
 OBJ:     OBJ_WEAPONS/WPN_BLOWGUN
 PLUS:    +6
 COLOUR:  ETC_DEATH
@@ -794,9 +799,8 @@ PLUS:    +15
 COLOUR:  LIGHTGREEN
 TILE:    urand_maxwell
 TILE_EQ: maxwell
-BRAND:   SPARM_RESISTANCE
 MAGIC:   1
-BOOL:    nospell, notelep, cursed
+BOOL:    nospell, notelep, cursed, elec, rCorr
 
 ENUM:    DRAGONMASK
 NAME:    mask of the Dragon
@@ -1014,6 +1018,7 @@ BOOL:     clarity
 BRAND:    SPWPN_VORPAL
 
 NAME:     shillelagh "Devastator"
+INSCRIP:  shatter
 OBJ:      OBJ_WEAPONS/WPN_CLUB
 TYPE:     shillelagh
 TILE:     urand_shillelagh
@@ -1066,7 +1071,7 @@ BRAND:    SPARM_SPIRIT_SHIELD
 TILE:     urand_moon_troll_leather_armour
 TILE_EQ:  moon_troll_leather_armour
 MP:       +5
-REGEN:    40
+REGEN:    1
 
 ENUM:     FINGER_AMULET
 NAME:     macabre finger necklace
@@ -1092,9 +1097,9 @@ TYPE:     maul
 COLOUR:   LIGHTRED
 TILE:     urand_dark_maul
 TILE_EQ:  dark_maul
-PLUS:     +6
+PLUS:     +10
 BASE_ACC: +2
-BASE_DAM: +27
+BASE_DAM: +35
 BASE_DELAY: +13
 BRAND:    SPWPN_VORPAL
 
@@ -1139,6 +1144,7 @@ BOOL:    rMut
 
 ENUM:     FIRESTARTER
 NAME:     great mace "Firestarter"
+INSCRIP:  inner flame,
 OBJ:      OBJ_WEAPONS/WPN_GREAT_MACE
 COLOUR:   RED
 TILE:     urand_firestarter
@@ -1159,7 +1165,7 @@ BOOL:     clarity, sustab
 
 ENUM:    MAJIN
 NAME:    Majin-Bo
-INSCRIP: Archmagi,
+INSCRIP: Archmagi
 OBJ:     OBJ_WEAPONS/WPN_QUARTERSTAFF
 PLUS:    +6
 COLOUR:  ETC_UNHOLY
@@ -1173,6 +1179,7 @@ BOOL:    unholy
 ENUM:    GYRE
 NAME:    quick blades "Gyre" and "Gimble"
 OBJ:     OBJ_WEAPONS/WPN_QUICK_BLADE
+TYPE:    quick blades
 COLOUR:  ETC_ENCHANT
 TILE:    urand_gyre
 TILE_EQ: gyre

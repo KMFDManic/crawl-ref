@@ -43,6 +43,7 @@ monster_type fill_out_corpse(const monster* mons,
                              item_def& corpse,
                              bool force_corpse = false);
 
+void goldify_corpse(item_def &corpse);
 bool explode_corpse(item_def& corpse, const coord_def& where);
 
 int place_monster_corpse(const monster* mons, bool silent, bool force = false);
@@ -80,5 +81,4 @@ bool mons_felid_can_revive(const monster* mons);
 void mons_felid_revive(monster* mons);
 
 bool mons_bennu_can_revive(const monster* mons);
-void mons_bennu_revive(monster* mons);
 #endif

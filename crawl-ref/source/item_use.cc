@@ -20,7 +20,6 @@
 #include "delay.h"
 #include "describe.h"
 #include "directn.h"
-#include "effects.h"
 #include "english.h"
 #include "env.h"
 #include "evoke.h"
@@ -187,7 +186,7 @@ bool can_wield(item_def *weapon, bool say_reason,
                 mprf_nocap("%s", weapon->name(DESC_INVENTORY_EQUIP).c_str());
         }
         else if (is_artefact(*weapon) && !item_type_known(*weapon))
-            artefact_wpn_learn_prop(*weapon, ARTP_BRAND);
+            artefact_learn_prop(*weapon, ARTP_BRAND);
         return false;
     }
 
@@ -293,6 +292,10 @@ bool wield_weapon(bool auto_wield, int slot, bool show_weff_messages,
                     return false;
                 }
             }
+
+            // check if you'd get stat-zeroed
+            if (!_safe_to_remove_or_wear(*wpn, true))
+                return false;
 
             if (!unwield_item(show_weff_messages))
                 return false;
@@ -755,7 +758,7 @@ bool do_wear_armour(int item, bool quiet)
             if (you.species == SP_OCTOPODE)
                 mpr("You need the rest of your tentacles for walking.");
             else
-                mprf("You'd need another %s to do that!", you.hand_name(true).c_str());
+                mprf("You'd need another %s to do that!", you.hand_name(false).c_str());
         }
         return false;
     }
@@ -772,6 +775,7 @@ bool do_wear_armour(int item, bool quiet)
                 mpr("You need the rest of your tentacles for walking.");
             else
             {
+                // Singular hand should have already been handled above.
                 mprf("You'd need three %s to do that!",
                      you.hand_name(true).c_str());
             }
@@ -1053,9 +1057,9 @@ static bool _safe_to_remove_or_wear(const item_def &item, bool remove, bool quie
 
     if (is_artefact(item))
     {
-        prop_str += artefact_known_wpn_property(item, ARTP_STRENGTH);
-        prop_int += artefact_known_wpn_property(item, ARTP_INTELLIGENCE);
-        prop_dex += artefact_known_wpn_property(item, ARTP_DEXTERITY);
+        prop_str += artefact_known_property(item, ARTP_STRENGTH);
+        prop_int += artefact_known_property(item, ARTP_INTELLIGENCE);
+        prop_dex += artefact_known_property(item, ARTP_DEXTERITY);
     }
 
     if (!remove)
@@ -1115,7 +1119,7 @@ bool safe_to_remove(const item_def &item, bool quiet)
          inf.is_type(OBJ_JEWELLERY, RING_FLIGHT)
          || inf.base_type == OBJ_ARMOUR && inf.special == SPARM_FLYING
          || is_artefact(inf)
-            && artefact_known_wpn_property(inf, ARTP_FLY);
+            && artefact_known_property(inf, ARTP_FLY);
 
     // assumes item can't grant flight twice
     const bool removing_ends_flight = you.flight_mode()
@@ -1600,18 +1604,7 @@ bool remove_ring(int slot, bool announce)
     return true;
 }
 
-static int _wand_range(zap_type ztype)
-{
-    // FIXME: Eventually we should have sensible values here.
-    return LOS_RADIUS;
-}
-
-static int _max_wand_range()
-{
-    return LOS_RADIUS;
-}
-
-static bool _dont_use_invis()
+bool dont_use_invis()
 {
     if (!you.backlit())
         return false;
@@ -1630,351 +1623,6 @@ static bool _dont_use_invis()
     }
 
     return false;
-}
-
-static targetter *_wand_targetter(const item_def *wand)
-{
-    int range = _wand_range(wand->zap());
-    const int power = 15 + you.skill(SK_EVOCATIONS, 5) / 2;
-
-    switch (wand->sub_type)
-    {
-    case WAND_FIREBALL:
-        return new targetter_beam(&you, range, ZAP_FIREBALL, power, 1, 1);
-    case WAND_LIGHTNING:
-        return new targetter_beam(&you, range, ZAP_LIGHTNING_BOLT, power, 0, 0);
-    case WAND_FLAME:
-        return new targetter_beam(&you, range, ZAP_THROW_FLAME, power, 0, 0);
-    case WAND_FIRE:
-        return new targetter_beam(&you, range, ZAP_BOLT_OF_FIRE, power, 0, 0);
-    case WAND_FROST:
-        return new targetter_beam(&you, range, ZAP_THROW_FROST, power, 0, 0);
-    case WAND_COLD:
-        return new targetter_beam(&you, range, ZAP_BOLT_OF_COLD, power, 0, 0);
-    case WAND_DIGGING:
-        return new targetter_beam(&you, range, ZAP_DIG, power, 0, 0);
-    default:
-        return 0;
-    }
-}
-
-/**
- * Returns the MP cost of zapping a wand. Usually zero.
- */
-int wand_mp_cost()
-{
-    // Update mutation-data.h when updating this value.
-    return player_mutation_level(MUT_MP_WANDS) * 6;
-}
-
-void zap_wand(int slot)
-{
-    if (!form_can_use_wand())
-    {
-        mpr("You have no means to grasp a wand firmly enough.");
-        return;
-    }
-
-    bolt beam;
-    dist zap_wand;
-    int item_slot;
-
-    // Unless the character knows the type of the wand, the targeting
-    // system will default to enemies. -- [ds]
-    targ_mode_type targ_mode = TARG_HOSTILE;
-
-    beam.set_agent(&you);
-    beam.source_name = "you";
-
-    if (inv_count() < 1)
-    {
-        canned_msg(MSG_NOTHING_CARRIED);
-        return;
-    }
-
-    if (you.berserk())
-    {
-        canned_msg(MSG_TOO_BERSERK);
-        return;
-    }
-
-    if (player_mutation_level(MUT_NO_ARTIFICE))
-    {
-        mpr("You cannot evoke magical items.");
-        return;
-    }
-
-    const int mp_cost = wand_mp_cost();
-    if (!enough_mp(mp_cost, false))
-        return;
-
-    if (slot != -1)
-        item_slot = slot;
-    else
-    {
-        item_slot = prompt_invent_item("Zap which item?",
-                                       MT_INVLIST,
-                                       OBJ_WANDS,
-                                       true, true, true, 0, -1, nullptr,
-                                       OPER_ZAP);
-    }
-
-    if (prompt_failed(item_slot))
-        return;
-
-    item_def& wand = you.inv[item_slot];
-    if (wand.base_type != OBJ_WANDS)
-    {
-        mpr("You can't zap that!");
-        return;
-    }
-
-    // If you happen to be wielding the wand, its display might change.
-    if (you.equip[EQ_WEAPON] == item_slot)
-        you.wield_change = true;
-
-    const zap_type type_zapped = wand.zap();
-
-    const bool has_charges = wand.charges > 0;
-    if (!has_charges && wand.used_count == ZAPCOUNT_EMPTY)
-    {
-        mpr("This wand has no charges.");
-        return;
-    }
-
-    // already know the type
-    const bool alreadyknown = item_type_known(wand);
-    // will waste charges
-    const bool wasteful     = !item_ident(wand, ISFLAG_KNOW_PLUSES);
-          bool invis_enemy  = false;
-    const bool dangerous    = player_in_a_dangerous_place(&invis_enemy);
-    targetter *hitfunc      = 0;
-
-    if (!alreadyknown)
-    {
-        beam.effect_known = false;
-        beam.effect_wanton = false;
-    }
-    else
-    {
-        switch (wand.sub_type)
-        {
-        case WAND_DIGGING:
-        case WAND_TELEPORTATION:
-            targ_mode = TARG_ANY;
-            break;
-
-        case WAND_HEAL_WOUNDS:
-            if (you_worship(GOD_ELYVILON))
-            {
-                targ_mode = TARG_ANY;
-                break;
-            }
-            // else intentional fall-through
-        case WAND_HASTING:
-        case WAND_INVISIBILITY:
-            targ_mode = TARG_FRIEND;
-            break;
-
-        default:
-            targ_mode = TARG_HOSTILE;
-            break;
-        }
-
-        hitfunc = _wand_targetter(&wand);
-    }
-
-    const int power = (15 + you.skill(SK_EVOCATIONS, 5) / 2)
-        * (player_mutation_level(MUT_MP_WANDS) + 6) / 6;
-    const int tracer_range =
-        (alreadyknown && wand.sub_type != WAND_RANDOM_EFFECTS) ?
-        _wand_range(type_zapped) : _max_wand_range();
-    const string zap_title =
-        "Zapping: " + get_menu_colour_prefix_tags(wand, DESC_INVENTORY)
-                    + (wasteful ? " <lightred>(will waste charges)</lightred>"
-                                : "");
-    direction_chooser_args args;
-    args.mode = targ_mode;
-    args.range = tracer_range;
-    args.top_prompt = zap_title;
-    args.hitfunc = hitfunc;
-    if (testbits(get_spell_flags(zap_to_spell(type_zapped)), SPFLAG_MR_CHECK))
-    {
-        args.get_desc_func = bind(desc_success_chance, placeholders::_1,
-                                  zap_ench_power(type_zapped, power));
-    }
-    direction(zap_wand, args);
-
-    if (hitfunc)
-        delete hitfunc;
-
-    if (!zap_wand.isValid)
-    {
-        if (zap_wand.isCancel)
-            canned_msg(MSG_OK);
-        return;
-    }
-
-    if (alreadyknown && zap_wand.target == you.pos())
-    {
-        if (wand.sub_type == WAND_TELEPORTATION
-            && you.no_tele_print_reason(false, false))
-        {
-            return;
-        }
-        else if (wand.sub_type == WAND_HASTING
-                 && stasis_blocks_effect(false, "%s prevents hasting.",
-                                         0, nullptr, "You cannot haste."))
-        {
-            return;
-        }
-        else if (wand.sub_type == WAND_INVISIBILITY && _dont_use_invis())
-            return;
-    }
-
-    if (!has_charges)
-    {
-        canned_msg(MSG_NOTHING_HAPPENS);
-        // It's an empty wand; inscribe it that way.
-        wand.used_count = ZAPCOUNT_EMPTY;
-        you.turn_is_over = true;
-        return;
-    }
-
-    if (you.confused())
-        zap_wand.confusion_fuzz();
-
-    if (wand.sub_type == WAND_RANDOM_EFFECTS)
-    {
-        beam.effect_known = false;
-        beam.effect_wanton = alreadyknown;
-    }
-
-    beam.source   = you.pos();
-    beam.attitude = ATT_FRIENDLY;
-    beam.set_target(zap_wand);
-
-    const bool aimed_at_self = (beam.target == you.pos());
-
-    // Check whether we may hit friends, use "safe" values for random effects
-    // and unknown wands (highest possible range, and unresistable beam
-    // flavour). Don't use the tracer if firing at self.
-    if (!aimed_at_self)
-    {
-        beam.range = tracer_range;
-        if (!player_tracer(beam.effect_known ? type_zapped
-                                             : ZAP_DEBUGGING_RAY,
-                           power, beam, beam.effect_known ? 0 : 17))
-        {
-            return;
-        }
-    }
-
-    // Zapping the wand isn't risky if you aim it away from all monsters
-    // and yourself, unless there's a nearby invisible enemy and you're
-    // trying to hit it at random.
-    const bool risky = dangerous && (beam.friend_info.count
-                                     || beam.foe_info.count
-                                     || invis_enemy
-                                     || aimed_at_self);
-
-    if (risky && alreadyknown && wand.sub_type == WAND_RANDOM_EFFECTS)
-    {
-        // Xom loves it when you use a Wand of Random Effects and
-        // there is a dangerous monster nearby...
-        xom_is_stimulated(200);
-    }
-
-    // Reset range.
-    beam.range = _wand_range(type_zapped);
-
-#ifdef WIZARD
-    if (you.wizard)
-    {
-        string str = wand.inscription;
-        int wiz_range = strip_number_tag(str, "range:");
-        if (wiz_range != TAG_UNFOUND)
-            beam.range = wiz_range;
-    }
-#endif
-
-    dec_mp(mp_cost, false);
-
-    // zapping() updates beam.
-    zapping(type_zapped, power, beam);
-
-    // Take off a charge.
-    wand.charges--;
-    // And a few more, if you didn't know the wand's charges.
-    if (wasteful)
-    {
-#ifdef DEBUG_DIAGNOSTICS
-        const int initial_charge = wand.plus;
-#endif
-
-        const int wasted_charges = 1 + random2(2); //1-2
-        wand.charges = max(0, wand.charges - wasted_charges);
-
-        dprf("Wasted %d charges (wand %d -> %d)", wasted_charges,
-             initial_charge, wand.charges);
-        mpr("Evoking this partially-identified wand wasted a few charges.");
-    }
-
-    // Zap counts count from the last recharge.
-    if (wand.used_count == ZAPCOUNT_RECHARGED)
-        wand.used_count = 0;
-    // Increment zap count.
-    if (wand.used_count >= 0)
-    {
-        wand.used_count++;
-        // And at least once more for wasteage
-        if (wasteful)
-            wand.used_count++;
-    }
-
-    // Identify if unknown.
-    if (!alreadyknown)
-    {
-        set_ident_type(wand, ID_KNOWN_TYPE);
-        mprf_nocap("%s", wand.name(DESC_INVENTORY_EQUIP).c_str());
-    }
-
-    if (item_type_known(wand)
-        && (item_ident(wand, ISFLAG_KNOW_PLUSES)
-            || you.skill_rdiv(SK_EVOCATIONS) > random2(27)))
-    {
-        if (!item_ident(wand, ISFLAG_KNOW_PLUSES))
-        {
-            mpr("Your skill with magical items lets you calculate "
-                "the power of this device...");
-        }
-
-        mprf("This wand has %d charge%s left.",
-             wand.plus, wand.plus == 1 ? "" : "s");
-
-        set_ident_flags(wand, ISFLAG_KNOW_PLUSES);
-    }
-    // Mark as empty if necessary.
-    if (wand.charges == 0 && wand.flags & ISFLAG_KNOW_PLUSES)
-        wand.used_count = ZAPCOUNT_EMPTY;
-
-    practise(EX_DID_ZAP_WAND);
-    count_action(CACT_EVOKE, EVOC_WAND);
-    alert_nearby_monsters();
-
-    if (!alreadyknown && risky)
-    {
-        // Xom loves it when you use an unknown wand and there is a
-        // dangerous monster nearby...
-        xom_is_stimulated(200);
-    }
-
-    // Need to do this down here since auto_assign_item_slot may
-    // move the item in memory.
-    if (!alreadyknown)
-        auto_assign_item_slot(wand);
-
-    you.turn_is_over = true;
 }
 
 void prompt_inscribe_item()
@@ -2090,7 +1738,7 @@ void drink(int slot)
     }
 
     if (alreadyknown && potion.sub_type == POT_INVISIBILITY
-        && _dont_use_invis())
+        && dont_use_invis())
     {
         return;
     }
@@ -2110,6 +1758,12 @@ void drink(int slot)
         return;
     }
 
+    if (alreadyknown && is_bad_item(potion, true))
+    {
+        canned_msg(MSG_UNTHINKING_ACT);
+        return;
+    }
+
     zin_recite_interrupt();
 
     // The "> 1" part is to reduce the amount of times that Xom is
@@ -2119,8 +1773,7 @@ void drink(int slot)
                             && you.experience_level > 1);
     potion_type pot_type = (potion_type)potion.sub_type;
 
-    if (!you_worship(GOD_GOZAG)
-        && you.penance[GOD_GOZAG] && one_chance_in(5))
+    if (player_under_penance(GOD_GOZAG) && one_chance_in(3))
     {
         simple_god_message(" petitions for your drink to fail.", GOD_GOZAG);
 
@@ -2632,6 +2285,75 @@ static int _handle_enchant_armour(bool alreadyknown, const string &pre_msg)
     return 0;
 }
 
+void random_uselessness(int scroll_slot)
+{
+    ASSERT(!crawl_state.game_is_arena());
+
+    int temp_rand = random2(8);
+
+    // If this isn't from a scroll, skip the first two possibilities.
+    if (scroll_slot == -1)
+        temp_rand = 2 + random2(6);
+
+    switch (temp_rand)
+    {
+    case 0:
+        mprf("The dust glows %s!", weird_glowing_colour().c_str());
+        break;
+
+    case 1:
+        mprf("The scroll reassembles itself in your %s!",
+             you.hand_name(true).c_str());
+        inc_inv_item_quantity(scroll_slot, 1);
+        break;
+
+    case 2:
+        if (you.weapon())
+        {
+            mprf("%s glows %s for a moment.",
+                 you.weapon()->name(DESC_YOUR).c_str(),
+                 weird_glowing_colour().c_str());
+        }
+        else
+        {
+            mpr(you.hands_act("glow", weird_glowing_colour()
+                                      + " for a moment."));
+        }
+        break;
+
+    case 3:
+        if (you.species == SP_MUMMY)
+            mpr("Your bandages flutter.");
+        else // if (you.can_smell())
+            mprf("You smell %s.", weird_smell().c_str());
+        break;
+
+    case 4:
+        mpr("You experience a momentary feeling of inescapable doom!");
+        break;
+
+    case 5:
+        if (player_mutation_level(MUT_BEAK) || one_chance_in(3))
+            mpr("Your brain hurts!");
+        else if (you.species == SP_MUMMY || coinflip())
+            mpr("Your ears itch!");
+        else
+            mpr("Your nose twitches suddenly!");
+        break;
+
+    case 6:
+        mprf(MSGCH_SOUND, "You hear the tinkle of a tiny bell.");
+        noisy(2, you.pos());
+        cast_summon_butterflies(100);
+        break;
+
+    case 7:
+        mprf(MSGCH_SOUND, "You hear %s.", weird_sound().c_str());
+        noisy(2, you.pos());
+        break;
+    }
+}
+
 static void _handle_read_book(int item_slot)
 {
     if (you.berserk())
@@ -2649,14 +2371,13 @@ static void _handle_read_book(int item_slot)
     item_def& book(you.inv[item_slot]);
     ASSERT(book.sub_type != BOOK_MANUAL);
 
-    if (book.sub_type == BOOK_DESTRUCTION)
+#if TAG_MAJOR_VERSION == 34
+    if (book.sub_type == BOOK_BUGGY_DESTRUCTION)
     {
-        if (silenced(you.pos()))
-            mpr("This book does not work if you cannot read it aloud!");
-        else
-            tome_of_power(item_slot);
+        mpr("This item has been removed, sorry!");
         return;
     }
+#endif
 
     read_book(book);
 }
@@ -2724,35 +2445,6 @@ bool player_can_read()
         return false;
     }
 
-    if (silenced(you.pos()))
-    {
-        mpr("Magic scrolls do not work when you're silenced!");
-        return false;
-    }
-
-    // water elementals
-    if (you.duration[DUR_WATER_HOLD] && !you.res_water_drowning())
-    {
-        mpr("You cannot read scrolls while unable to breathe!");
-        return false;
-    }
-
-    // ru
-    if (you.duration[DUR_NO_SCROLLS])
-    {
-        mpr("You cannot read scrolls in your current state!");
-        return false;
-    }
-
-#if TAG_MAJOR_VERSION == 34
-    // Prevent hot lava orcs reading scrolls
-    if (you.species == SP_LAVA_ORC && temperature_effect(LORC_NO_SCROLLS))
-    {
-        mpr("You'd burn any scroll you tried to read!");
-        return false;
-    }
-#endif
-
     return true;
 }
 
@@ -2786,6 +2478,26 @@ string cannot_read_item_reason(const item_def &item)
     // and scrolls - but nothing else.
     if (item.base_type != OBJ_SCROLLS)
         return "You can't read that!";
+
+    // the below only applies to scrolls. (it's easier to read books, since
+    // that's just a UI/strategic thing.)
+
+    if (silenced(you.pos()))
+        return "Magic scrolls do not work when you're silenced!";
+
+    // water elementals
+    if (you.duration[DUR_WATER_HOLD] && !you.res_water_drowning())
+        return "You cannot read scrolls while unable to breathe!";
+
+    // ru
+    if (you.duration[DUR_NO_SCROLLS])
+        return "You cannot read scrolls in your current state!";
+
+#if TAG_MAJOR_VERSION == 34
+    // Prevent hot lava orcs reading scrolls
+    if (you.species == SP_LAVA_ORC && temperature_effect(LORC_NO_SCROLLS))
+        return "You'd burn any scroll you tried to read!";
+#endif
 
     // don't waste the player's time reading known scrolls in situations where
     // they'd be useless
@@ -2895,9 +2607,11 @@ void read(int slot)
     // scroll effect kicks in.
     if (player_mutation_level(MUT_BLURRY_VISION))
     {
-        // takes 1, 2, 3 extra turns
-        const int turns = player_mutation_level(MUT_BLURRY_VISION);
+        // takes 0.5, 1, 2 extra turns
+        const int turns = max(1, player_mutation_level(MUT_BLURRY_VISION) - 1);
         start_delay(DELAY_BLURRY_SCROLL, turns, item_slot);
+        if (player_mutation_level(MUT_BLURRY_VISION) == 1)
+            you.time_taken /= 2;
     }
     else
         read_scroll(item_slot);
@@ -2946,11 +2660,33 @@ void read_scroll(int item_slot)
 
     case SCR_BLINKING:
     {
+        const string reason = you.no_tele_reason(true, true);
+        if (!reason.empty()) {
+            mpr(pre_succ_msg);
+            mpr(reason);
+            break;
+        }
+
         const bool safely_cancellable
             = alreadyknown && !player_mutation_level(MUT_BLURRY_VISION);
-        cancel_scroll = (blink(1000, false, false,
-                               pre_succ_msg, safely_cancellable) == -1
-                        && alreadyknown);
+        if (allow_control_teleport())
+        {
+            cancel_scroll = (cast_controlled_blink(100, false,
+                                                   safely_cancellable)
+                             == SPRET_ABORT) && alreadyknown;
+        }
+        else if (alreadyknown
+                 && !yesno("Your blink will be uncontrolled - continue anyway?",
+                            false, 'n'))
+        {
+            canned_msg(MSG_OK);
+            cancel_scroll = true;
+        }
+        else
+            uncontrolled_blink();
+
+        if (!cancel_scroll)
+            mpr(pre_succ_msg); // ordering is iffy but w/e
     }
         break;
 
@@ -3241,11 +2977,8 @@ bool stasis_blocks_effect(bool calc_unid,
 
 void tile_item_use_floor(int idx)
 {
-    if (mitm[idx].base_type == OBJ_CORPSES
-        && mitm[idx].sub_type != CORPSE_SKELETON)
-    {
-        butchery(idx);
-    }
+    if (mitm[idx].is_type(OBJ_CORPSES, CORPSE_BODY))
+        butchery(&mitm[idx]);
 }
 
 void tile_item_pickup(int idx, bool part)

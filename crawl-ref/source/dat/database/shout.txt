@@ -247,10 +247,6 @@ Skald player ghost
 
 @player ghost@
 %%%%
-Death Knight player ghost
-
-@player ghost@
-%%%%
 Venom Mage player ghost
 
 @player ghost@
@@ -260,10 +256,6 @@ Chaos Knight player ghost
 @player ghost@
 %%%%
 Transmuter player ghost
-
-@player ghost@
-%%%%
-Healer player ghost
 
 @player ghost@
 %%%%
