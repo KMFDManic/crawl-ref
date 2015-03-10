@@ -116,7 +116,7 @@ makefile.dep
 /source/AppHdr.h.gch
 
 # Build number header
-/source/build.h
+#/source/build.h
 
 # Level-compiler generated files.
 /source/util/*.cc
