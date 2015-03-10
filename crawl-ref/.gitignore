@@ -107,7 +107,7 @@ makefile.dep
 /source/.android-cxxflags
 /source/.contrib-ok
 /source/.contrib-libs
-/source/compflag.h
+#/source/compflag.h
 
 # The Crawl executable.
 /source/crawl
