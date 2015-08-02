@@ -20,7 +20,13 @@ SOURCES_C    += $(filter-out $(ZIPBLACK), $(ZIPSOURCES))
 
 PNGSOURCES  += $(wildcard $(CORE_DIR)/source/contrib/libpng/*.c)
 PNGBLACK    += 
+ifeq ($(HAVE_NEON),1)
+PNGSOURCES  += $(CORE_DIR)/source/contrib/libpng/arm/arm_init.c \
+               $(CORE_DIR)/source/contrib/libpng/arm/filter_neon_intrinsics.c
+SOURCES_OBJ  += $(CORE_DIR)/source/contrib/libpng/arm/filter_neon.S
+endif
 SOURCES_C    += $(filter-out $(PNGBLACK), $(PNGSOURCES))
+
 
 SOURCES_C   += $(CORE_DIR)/source/contrib/freetype/src/autofit/autofit.c \
                $(CORE_DIR)/source/contrib/freetype/src/base/ftbase.c \

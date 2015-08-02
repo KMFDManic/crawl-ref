@@ -36,13 +36,18 @@ ifeq ($(HAVE_OPENGL), 1)
    LDFLAGS += -framework OpenGL
 endif
 else ifneq (,$(findstring ios,$(platform)))
+   ifeq ($(IOSSDK),)
+      IOSSDK := $(shell xcodebuild -version -sdk iphoneos Path)
+   endif
+
    TARGET := $(TARGET_NAME)_libretro_ios.dylib
-	fpic := -fPIC
-	COMMONFLAGS += -marm -DHAVE_POSIX_MEMALIGN -DGLES -DUNIX
+   fpic := -fPIC
+   COMMONFLAGS += -marm -DHAVE_POSIX_MEMALIGN -DGLES -DUNIX -DDARWIN_NO_CARBON
    CPPFLAGS += -stdlib=libc++ 
    LDFLAGS += -dynamiclib -marm -stdlib=libc++
    CC = clang -arch armv7 -isysroot $(IOSSDK) -miphoneos-version-min=5.0
    CXX = clang++ -arch armv7 -isysroot $(IOSSDK) -miphoneos-version-min=5.0   
+   HAVE_NEON = 1
 ifeq ($(HAVE_OPENGL), 1)
    LDFLAGS += -framework OpenGLES
 endif
@@ -61,7 +66,7 @@ CORE_DIR    := .
 
 include Makefile.common
 
-OBJECTS     += $(SOURCES_C:.c=.o) $(SOURCES_CXX:.cc=.o)
+OBJECTS     += $(SOURCES_C:.c=.o) $(SOURCES_CXX:.cc=.o) $(SOURCES_OBJ:.S=.o)
 
 COMMONFLAGS += -DFT2_BUILD_LIBRARY -DHAVE_FDATASYNC -D__LIBRETRO__ -DSQLITE_OMIT_LOAD_EXTENSION -DUSE_TILE -DUSE_TILE_LOCAL -DWIZARD -DUSE_FT $(fpic) -DPROPORTIONAL_FONT=\"DejaVuSans.ttf\" -DMONOSPACED_FONT=\"DejaVuSansMono.ttf\" 
 
