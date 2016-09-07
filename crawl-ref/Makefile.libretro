@@ -103,7 +103,11 @@ endif
 all: $(TARGET)
 
 $(TARGET): $(OBJECTS)
+ifeq ($(STATIC_LINKING),1)
+	$(AR) rcs $@ $(OBJECTS)
+else
 	$(CXX) $(fpic) -o $@ $(OBJECTS) $(LDFLAGS)
+endif
 
 %.o: %.c
 	$(CC) $(INCFLAGS) $(CFLAGS) -c -o $@ $<
