@@ -226,7 +226,10 @@ void retro_set_environment(retro_environment_t cb) { environ_cb = cb; }
 void retro_get_system_info(struct retro_system_info *info)
 {
    info->library_name = "Dungeon Crawl: Stone Soup";
-   info->library_version = "git"; // < TODO
+#ifndef GIT_VERSION
+#define GIT_VERSION ""
+#endif
+   info->library_version = "git" GIT_VERSION;
    info->valid_extensions = "crawlrc";
    info->need_fullpath = true;
    info->block_extract = true;
