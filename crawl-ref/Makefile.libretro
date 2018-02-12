@@ -30,6 +30,10 @@ ifneq (,$(findstring unix,$(platform)))
    COMMONFLAGS += -msse -msse2 -DUNIX
 	LDFLAGS += -lpthread
    LDFLAGS += -shared -Wl,--version-script=libretro/link.T -Wl,--no-undefined
+   ifneq (,$(findstring Haiku,$(shell uname -s)))
+     LDFLAGS += -lexecinfo
+   endif
+
 else ifneq (,$(findstring osx,$(platform)))
    TARGET := $(TARGET_NAME)_libretro.dylib
 	fpic := -fPIC

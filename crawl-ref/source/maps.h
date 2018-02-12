@@ -11,6 +11,10 @@
 #include "mapdef.h"
 #include "unwind.h"
 
+#if defined(__HAIKU__)
+#include <posix/endian.h>
+#endif
+
 struct level_range;
 class map_def;
 struct map_file_place;

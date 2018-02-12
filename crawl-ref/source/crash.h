@@ -7,6 +7,7 @@
 #define CRASH_H
 
 #include <cstdio>
+#include <execinfo.h>
 
 void init_crash_handler();
 void dump_crash_info(FILE* file);
