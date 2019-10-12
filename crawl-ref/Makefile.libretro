@@ -53,8 +53,15 @@ else ifneq (,$(findstring ios,$(platform)))
    COMMONFLAGS += -marm -DHAVE_POSIX_MEMALIGN -DGLES -DUNIX -DDARWIN_NO_CARBON
    CPPFLAGS += -stdlib=libc++ 
    LDFLAGS += -dynamiclib -marm -stdlib=libc++
+ifeq ($(platform), ios-arm64)
+   CC       = cc  -arch arm64 -isysroot $(IOSSDK) -miphoneos-version-min=5.0
+   CXX      = c++ -arch arm64 -isysroot $(IOSSDK) -miphoneos-version-min=5.0   
+   CFLAGS += -Wno-error=implicit-function-declaration
+   COMMONFLAGS += -DIOS
+else
    CC       = cc  -arch armv7 -isysroot $(IOSSDK) -miphoneos-version-min=5.0
    CXX      = c++ -arch armv7 -isysroot $(IOSSDK) -miphoneos-version-min=5.0   
+endif
    HAVE_NEON = 1
 ifeq ($(HAVE_OPENGL), 1)
    LDFLAGS += -framework OpenGLES
